@@ -14,9 +14,41 @@ const Sound = (() => {
     return buf;
   }
 
+  // iPhone mutes Web Audio in silent mode unless the page's audio session is "playback".
+  // iOS 17+ exposes that setting directly; older iOS switches to playback while a media element plays.
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let silentEl = null;
+  function silentWavUrl() {
+    const rate = 8000, n = rate / 2;
+    const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+    const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+    str(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); str(8, 'WAVE'); str(12, 'fmt ');
+    v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+    v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+    str(36, 'data'); v.setUint32(40, n * 2, true);
+    return URL.createObjectURL(new Blob([buf], { type: 'audio/wav' }));
+  }
+  function playThroughSilentMode() {
+    try {
+      if (navigator.audioSession) { navigator.audioSession.type = 'playback'; return; }
+    } catch (e) { /* fall through to the media-element approach */ }
+    if (!isIOS) return;
+    if (!silentEl) {
+      silentEl = document.createElement('audio');
+      silentEl.setAttribute('x-webkit-airplay', 'deny');
+      silentEl.loop = true;
+      silentEl.src = silentWavUrl();
+      document.addEventListener('visibilitychange', () => { if (document.hidden) silentEl.pause(); });
+    }
+    if (silentEl.paused) silentEl.play().catch(() => {});
+  }
+
+  // Called from every tap that makes sound, so it also runs inside a user gesture.
   function init() {
+    playThroughSilentMode();
     if (ctx) {
-      if (ctx.state === 'suspended') ctx.resume();
+      // iOS can leave the context "interrupted" after a call or app switch; any non-running state resumes.
+      resume();
       return ctx;
     }
     ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -36,7 +68,13 @@ const Sound = (() => {
     verb.connect(wet);
     wet.connect(comp);
     comp.connect(ctx.destination);
+    resume();
     return ctx;
+  }
+  function resume() {
+    if (ctx.state === 'running') return;
+    const p = ctx.resume(); // older Safari returns undefined instead of a promise
+    if (p && p.catch) p.catch(() => {});
   }
 
   function panned(out, midi) {
