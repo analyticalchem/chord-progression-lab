@@ -1,5 +1,6 @@
 /* Progression Lab: ear-training quiz. */
 const Quiz = (() => {
+  'use strict';
   const MODES = {
     prog: { label: 'Progressions', prompt: 'Which progression is this?' },
     cad: { label: 'Cadences', prompt: 'How does this phrase end?' },
@@ -8,9 +9,16 @@ const Quiz = (() => {
   const PROG_POOL = ['Axis', '1950s', 'Axis from vi', 'ii–V–I', 'Andalusian cadence', 'Mixolydian vamp', 'Minor pop loop', 'The minor iv'];
   const pick = a => a[Math.floor(Math.random() * a.length)];
   const shuffle = a => a.map(x => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map(p => p[1]);
+  const esc = s => Views.esc(s);
 
-  let el, api;
-  const state = { mode: 'prog', randomKey: true, right: 0, total: 0, streak: 0, q: null, playing: -1 };
+  let el, api, body, status;
+  const state = { mode: 'prog', randomKey: true, right: 0, total: 0, streak: 0, q: null, playing: -1, clip: false };
+
+  // "an authentic cadence", "a Phrygian half cadence" (Phrygian is a proper name and keeps its capital).
+  function cadenceName(name) {
+    const n = name.startsWith('Phrygian') ? name : name.toLowerCase();
+    return `${/^[aeiou]/i.test(n) ? 'an' : 'a'} ${n} cadence`;
+  }
 
   function numerals(insts, key) {
     return insts.map(i => Theory.resolve(i, key).text).join(' – ');
@@ -35,7 +43,7 @@ const Quiz = (() => {
       return {
         key, insts: toInsts(target.prog), durs: [1.2, 1.2, 2.4],
         options: CADENCES.map(c => ({ label: c.name, sub: c.short })),
-        answer: CADENCES.indexOf(target), reveal: `${target.name} cadence`,
+        answer: CADENCES.indexOf(target), reveal: cadenceName(target.name),
       };
     }
     const key = Theory.makeKey(pc, 'major');
@@ -54,11 +62,18 @@ const Quiz = (() => {
     if (!q) return;
     api.stopMain();
     const chords = q.insts.map(i => (i ? Theory.resolve(i, q.key) : null));
-    const real = chords.filter(Boolean);
-    const voiced = Theory.voice(real, 'smooth');
+    const voiced = Theory.voice(chords.filter(Boolean), 'smooth');
     let k = 0;
     const voicings = chords.map(c => (c ? voiced[k++] : null));
-    Sound.sequence(voicings, q.durs, i => { state.playing = i; renderPlaying(); }, () => { state.playing = -1; renderPlaying(); });
+    Sound.sequence(voicings, q.durs, i => { state.playing = i; renderPlaying(); }, () => endClip());
+    state.clip = true;
+    renderReplay();
+  }
+  function endClip() {
+    state.clip = false;
+    state.playing = -1;
+    renderPlaying();
+    renderReplay();
   }
 
   function answer(i) {
@@ -66,78 +81,108 @@ const Quiz = (() => {
     if (!q || q.picked != null) return;
     q.picked = i;
     state.total++;
-    if (i === q.answer) { state.right++; state.streak++; } else state.streak = 0;
-    render();
+    const right = i === q.answer;
+    if (right) { state.right++; state.streak++; } else state.streak = 0;
+    const where = `in ${q.key.name} ${q.key.mode}`;
+    status.className = 'qz-status ' + (right ? 'good' : 'bad');
+    Chrome.setText(status, right
+      ? `✓ Correct. That was ${q.reveal} ${where}. Score ${state.right} of ${state.total}.`
+      : `✕ Not this time. That was ${q.reveal} ${where}. Score ${state.right} of ${state.total}.`);
+    renderScore();
+    renderBody();
+    // The answer buttons are now disabled, so focus moves on to the next step.
+    const nextBtn = body.querySelector('[data-q="next"]');
+    if (nextBtn) nextBtn.focus();
   }
 
   function next() {
     state.q = makeQuestion();
-    render();
+    status.className = 'qz-status';
+    Chrome.setText(status, MODES[state.mode].prompt);
+    renderBody();
     play();
+    const first = body.querySelector('.qz-opt');
+    if (first) first.focus();
   }
 
   function renderPlaying() {
-    const dots = el.querySelectorAll('.qz-beat');
-    dots.forEach((d, i) => d.classList.toggle('on', i === state.playing));
+    body.querySelectorAll('.qz-beat').forEach((d, i) => d.classList.toggle('on', i === state.playing));
+  }
+  function renderReplay() {
+    const b = body.querySelector('[data-q="replay"]');
+    if (b) Chrome.setText(b, state.clip ? 'Stop' : 'Hear it again');
+  }
+  function renderScore() {
+    Chrome.setText(el.querySelector('#qzRight'), String(state.right));
+    Chrome.setText(el.querySelector('#qzTotal'), String(state.total));
+    Chrome.setText(el.querySelector('#qzStreak'), `Streak ${state.streak}`);
+  }
+  function renderModes() {
+    el.querySelectorAll('[data-qmode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.qmode === state.mode)));
   }
 
-  function render() {
+  function renderBody() {
     const q = state.q;
-    const tabs = Object.entries(MODES).map(([k, m]) =>
-      `<button type="button" class="seg-btn${state.mode === k ? ' on' : ''}" data-qmode="${k}" aria-pressed="${state.mode === k}">${m.label}</button>`).join('');
-    let body = '';
     if (!q) {
-      body = `<div class="qz-empty"><p>${MODES[state.mode].prompt} Press start and listen. Each question plays in ${state.randomKey ? 'a random key' : 'the current key'}.</p>
+      body.innerHTML = `<div class="qz-empty"><p>${MODES[state.mode].prompt} Press Start and listen. Each question plays in ${state.randomKey ? 'a random key' : 'the current key'}.</p>
         <button type="button" class="btn primary" data-q="start">Start</button></div>`;
-    } else {
-      const done = q.picked != null;
-      const beats = q.insts.map(i => `<span class="qz-beat${i ? '' : ' rest'}"></span>`).join('');
-      const opts = q.options.map((o, i) => {
-        let cls = 'qz-opt';
-        if (done && i === q.answer) cls += ' right';
-        else if (done && i === q.picked) cls += ' wrong';
-        return `<button type="button" class="${cls}" data-opt="${i}" ${done ? 'disabled' : ''}>
-          <span class="${o.rn ? 'qz-rn' : 'qz-label'}">${Views.esc(o.label)}</span>${o.sub ? `<span class="qz-sub">${Views.esc(o.sub)}</span>` : ''}</button>`;
-      }).join('');
-      const fb = !done ? `<p class="qz-feedback">${MODES[state.mode].prompt}</p>`
-        : q.picked === q.answer
-          ? `<p class="qz-feedback good">Correct. That was ${Views.esc(q.reveal)} in ${Views.esc(q.key.name)} ${q.key.mode}.</p>`
-          : `<p class="qz-feedback bad">Not this time. That was ${Views.esc(q.reveal)} in ${Views.esc(q.key.name)} ${q.key.mode}.</p>`;
-      body = `<div class="qz-play">
-          <button type="button" class="btn" data-q="replay">Hear it again</button>
-          <div class="qz-beats" aria-hidden="true">${beats}</div>
-        </div>
-        ${fb}
-        <div class="qz-opts${state.mode === 'deg' ? ' seven' : ''}">${opts}</div>
-        ${done ? `<div class="qz-after"><button type="button" class="btn primary" data-q="next">Next question</button>
-          <button type="button" class="btn" data-q="load">Open in builder</button></div>` : ''}`;
+      return;
     }
-    el.innerHTML = `<div class="qz-head">
-        <div class="seg" role="group" aria-label="Quiz type">${tabs}</div>
-        <label class="check"><input type="checkbox" id="qzRandom" ${state.randomKey ? 'checked' : ''}> Random key</label>
-        <div class="qz-score" aria-live="polite"><strong>${state.right}</strong> / ${state.total} correct<span>Streak ${state.streak}</span></div>
-      </div>${body}`;
+    const done = q.picked != null;
+    const beats = q.insts.map(i => `<span class="qz-beat${i ? '' : ' rest'}"></span>`).join('');
+    const opts = q.options.map((o, i) => {
+      const isRight = done && i === q.answer, isWrong = done && i === q.picked && !isRight;
+      const mark = isRight ? '<span class="qz-mark">✓ Answer</span>' : isWrong ? '<span class="qz-mark">✕ Your pick</span>' : '';
+      return `<button type="button" class="qz-opt${isRight ? ' right' : ''}${isWrong ? ' wrong' : ''}" data-opt="${i}" ${done ? 'disabled' : ''}>
+        <span class="${o.rn ? 'qz-rn' : 'qz-label'}">${esc(o.label)}</span>${o.sub ? `<span class="qz-sub">${esc(o.sub)}</span>` : ''}${mark}</button>`;
+    }).join('');
+    body.innerHTML = `<div class="qz-play">
+        <button type="button" class="btn" data-q="replay">${state.clip ? 'Stop' : 'Hear it again'}</button>
+        <div class="qz-beats" aria-hidden="true">${beats}</div>
+      </div>
+      <div class="qz-opts${state.mode === 'deg' ? ' seven' : ''}" role="group" aria-label="Answers">${opts}</div>
+      ${done ? `<div class="qz-after"><button type="button" class="btn primary" data-q="next">Next question</button>
+        <button type="button" class="btn" data-q="load">Open in builder</button></div>` : ''}`;
   }
 
   function init(root, appApi) {
     el = root;
     api = appApi;
+    const modes = Object.entries(MODES).map(([k, m]) =>
+      `<button type="button" class="chip" data-qmode="${k}" aria-pressed="${state.mode === k}">${m.label}</button>`).join('');
+    el.innerHTML = `<div class="qz-head">
+        <div class="presets" role="group" aria-label="Quiz type">${modes}</div>
+        <label class="check"><input type="checkbox" id="qzRandom" ${state.randomKey ? 'checked' : ''}> Random key</label>
+        <p class="qz-score"><strong id="qzRight">0</strong> / <span id="qzTotal">0</span> correct<span id="qzStreak">Streak 0</span></p>
+      </div>
+      <p class="qz-status" id="qzStatus" role="status"></p>
+      <div class="qz-body" id="qzBody"></div>`;
+    body = el.querySelector('#qzBody');
+    status = el.querySelector('#qzStatus');
+    Sound.onChange(on => { if (!on && state.clip) endClip(); });
     el.addEventListener('click', e => {
       const b = e.target.closest('button');
       if (!b) return;
-      if (b.dataset.qmode) { state.mode = b.dataset.qmode; state.q = null; render(); return; }
+      if (b.dataset.qmode) {
+        state.mode = b.dataset.qmode;
+        state.q = null;
+        if (state.clip) Sound.stop();
+        status.className = 'qz-status';
+        Chrome.setText(status, '');
+        renderModes();
+        renderBody();
+        return;
+      }
       if (b.dataset.opt != null) { answer(+b.dataset.opt); return; }
       const act = b.dataset.q;
       if (act === 'start' || act === 'next') next();
-      else if (act === 'replay') play();
-      else if (act === 'load' && state.q) {
-        api.load(state.q.insts.filter(Boolean), state.q.key.mode, state.q.key.pc);
-      }
+      else if (act === 'replay') { if (state.clip) Sound.stop(); else play(); }
+      else if (act === 'load' && state.q) api.load(state.q.insts.filter(Boolean), state.q.key.mode, state.q.key.pc);
     });
     el.addEventListener('change', e => {
-      if (e.target.id === 'qzRandom') { state.randomKey = e.target.checked; if (!state.q) render(); }
+      if (e.target.id === 'qzRandom') { state.randomKey = e.target.checked; if (!state.q) renderBody(); }
     });
-    render();
+    renderBody();
   }
 
   return { init };

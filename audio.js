@@ -43,6 +43,15 @@ const Sound = (() => {
     if (silentEl.paused) silentEl.play().catch(() => {});
   }
 
+  // Overall volume (0–1), applied to the master gain.
+  const MASTER = 0.9;
+  let volume = 0.8;
+  function setVolume(v) {
+    volume = Math.max(0, Math.min(1, v));
+    if (master) master.gain.setTargetAtTime(MASTER * volume, ctx.currentTime, 0.02);
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && ctx) resume(); });
+
   // Called from every tap that makes sound, so it also runs inside a user gesture.
   function init() {
     playThroughSilentMode();
@@ -58,7 +67,7 @@ const Sound = (() => {
     comp.attack.value = 0.004;
     comp.release.value = 0.25;
     master = ctx.createGain();
-    master.gain.value = 0.9;
+    master.gain.value = MASTER * volume;
     const verb = ctx.createConvolver();
     verb.buffer = impulse(2.4, 3.2);
     const wet = ctx.createGain();
@@ -166,43 +175,70 @@ const Sound = (() => {
     if (bassOctave) keys(out, midi + 12, t, dur, vel * 0.5 * bassLevel);
   }
 
-  const PATTERNS = {
-    sustain: { beats: 4, ev: [{ b: 0, part: 'bass', d: 4 }, { b: 0, part: 'chord', d: 4, roll: 0.012 }] },
-    pulse: {
-      beats: 4,
-      ev: [{ b: 0, part: 'bass', d: 4 }, { b: 0, part: 'chord', d: 0.85, v: 0.95 }, { b: 1, part: 'chord', d: 0.85, v: 0.65 },
-        { b: 2, part: 'chord', d: 0.85, v: 0.8 }, { b: 3, part: 'chord', d: 0.85, v: 0.65 }],
-    },
-    arpeggio: { beats: 4, arp: true },
-    waltz: {
-      beats: 3,
-      ev: [{ b: 0, part: 'bass', d: 1.5, v: 0.9 }, { b: 1, part: 'chord', d: 0.8, v: 0.7 }, { b: 2, part: 'chord', d: 0.8, v: 0.62 }],
-    },
-  };
-
-  function scheduleBar(v, t, style, tempo, out) {
-    const spb = 60 / tempo;
-    const p = PATTERNS[style] || PATTERNS.sustain;
-    if (p.arp) {
-      bass(out, v.bass, t, 4 * spb, 0.85);
-      const up = [...v.upper].sort((a, b) => a - b);
-      const cycle = up.concat(up.slice(1, -1).reverse());
-      for (let i = 0; i < 8; i++) keys(out, cycle[i % cycle.length], t + i * spb / 2, 1.3 * spb, i % 4 === 0 ? 0.85 : 0.65);
-    } else {
-      p.ev.forEach(e => {
-        const at = t + e.b * spb, dur = e.d * spb, vel = e.v ?? 0.85;
-        if (e.part === 'bass') bass(out, v.bass, at, dur, vel);
-        else v.upper.forEach((m, i) => keys(out, m, at + (e.roll || 0) * i, dur, vel * 0.9));
+  // One bar of a pattern in a meter, timed in eighth-note pulses. Accents: the downbeat is loudest,
+  // the meter's other strong beats next, remaining beats after that, and in-between pulses softest.
+  function barEvents(meter, pattern) {
+    const starts = [];
+    let total = 0;
+    meter.beats.forEach(n => { starts.push(total); total += n; });
+    const accent = b => (b === 0 ? 1 : meter.strong.includes(b) ? 0.85 : 0.72);
+    const ev = [];
+    const add = (part, at, len, vel, extra) => ev.push({ part, at, len, vel, ...extra });
+    if (pattern === 'pulse') {
+      add('bass', 0, total, 0.85);
+      starts.forEach((s, b) => add('chord', s, meter.beats[b] * 0.9, accent(b)));
+    } else if (pattern === 'arpeggio') {
+      add('bass', 0, total, 0.85);
+      for (let i = 0; i < total; i++) {
+        const b = starts.lastIndexOf(starts.filter(s => s <= i).pop());
+        add('arp', i, 1.6, starts.includes(i) ? accent(b) * 0.85 : 0.55, { idx: i });
+      }
+    } else if (pattern === 'oompah') {
+      // Beats of three become bass–chord–chord; beats of two alternate bass on strong beats, chord on the rest.
+      starts.forEach((s, b) => {
+        const n = meter.beats[b];
+        if (n === 3) {
+          add('bass', s, 1.2, accent(b));
+          add('chord', s + 1, 0.9, 0.62);
+          add('chord', s + 2, 0.9, 0.56);
+        } else if (b === 0 || meter.strong.includes(b)) add('bass', s, n, accent(b));
+        else add('chord', s, n * 0.8, accent(b));
       });
+    } else {
+      add('bass', 0, total, 0.85);
+      add('chord', 0, total, 0.85, { roll: 0.012 });
     }
-    return p.beats * spb;
+    return { total, ev };
   }
+
+  const pulseSeconds = (meter, tempo) => 60 / tempo / meter.perBeat;
+  const barSeconds = (meter, tempo) => meter.beats.reduce((s, n) => s + n, 0) * pulseSeconds(meter, tempo);
+
+  function scheduleBar(v, t, meter, pattern, tempo, out) {
+    const pulse = pulseSeconds(meter, tempo);
+    const { total, ev } = barEvents(meter, pattern);
+    const up = [...v.upper].sort((a, b) => a - b);
+    const cycle = up.concat(up.slice(1, -1).reverse());
+    ev.forEach(e => {
+      const at = t + e.at * pulse, dur = e.len * pulse;
+      if (e.part === 'bass') bass(out, v.bass, at, dur, e.vel);
+      else if (e.part === 'arp') keys(out, cycle[e.idx % cycle.length], at, dur, e.vel);
+      else v.upper.forEach((m, i) => keys(out, m, at + (e.roll || 0) * i, dur, e.vel * 0.9));
+    });
+    return { seconds: total * pulse, pulse, total };
+  }
+
+  // Listeners hear whenever playback of any kind starts or stops, so every Stop control stays in step.
+  const listeners = [];
+  const notify = () => listeners.forEach(fn => fn(!!run));
+  function onChange(fn) { listeners.push(fn); }
 
   function later(r, time, fn) {
     r.timers.push(setTimeout(fn, Math.max(0, (time - ctx.currentTime) * 1000)));
   }
 
-  // opts: { getBars, tempo, style, loop, onChord(i), onEnd() }. tempo/style/loop may be getters.
+  // opts: { getBars, tempo, meter, pattern, loop, onChord(i), onPulse(k, i), onEnd() }.
+  // tempo, meter, pattern and loop may be getters so changes apply from the next bar.
   function start(opts) {
     init();
     stop();
@@ -222,13 +258,16 @@ const Sound = (() => {
           }
         }
         const idx = r.i, at = r.next;
-        r.next += scheduleBar(bars[idx], at, val(r.style), val(r.tempo), r.bus);
+        const bar = scheduleBar(bars[idx], at, val(r.meter), val(r.pattern), val(r.tempo), r.bus);
         later(r, at, () => r.onChord && r.onChord(idx));
+        if (r.onPulse) for (let k = 0; k < bar.total; k++) later(r, at + k * bar.pulse, () => r.onPulse(k, idx));
+        r.next += bar.seconds;
         r.i++;
       }
     };
     r.interval = setInterval(tick, 25);
     tick();
+    notify();
   }
 
   function stop() {
@@ -239,6 +278,7 @@ const Sound = (() => {
     r.timers.forEach(clearTimeout);
     r.bus.gain.setTargetAtTime(0, ctx.currentTime, 0.04);
     setTimeout(() => r.bus.disconnect(), 600);
+    notify();
   }
 
   // Play voicings back to back with fixed durations (seconds). A null voicing is a rest.
@@ -260,6 +300,7 @@ const Sound = (() => {
       t += d;
     });
     later(r, t, () => { if (run === r) { stop(); onEnd && onEnd(); } });
+    notify();
   }
 
   function playChord(v, seconds = 1.6) {
@@ -275,5 +316,5 @@ const Sound = (() => {
     else keys(master, midi, t, 0.9, 0.85);
   }
 
-  return { init, start, stop, sequence, playChord, playNote, setBass, isPlaying: () => !!run };
+  return { init, start, stop, sequence, playChord, playNote, setBass, setVolume, barSeconds, onChange, isPlaying: () => !!run };
 })();

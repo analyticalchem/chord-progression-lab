@@ -1,179 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Progression Lab</title>
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Build chord progressions in any key and meter, hear them on piano, and see chord function, voice leading and root motion on the circle of fifths.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2032%2032'%3E%3Crect%20width='32'%20height='32'%20rx='7'%20fill='%232670cc'/%3E%3Cpath%20d='M9%208h4v16H9zM15%208h4v16h-4zM21%208h3v16h-3z'%20fill='%23fff'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..700&family=Figtree:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400..700&amp;family=Figtree:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
 <link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="views.css">
+<script>
+  // Apply the saved theme before first paint so the page does not flash.
+  (function () {
+    try {
+      var t = localStorage.getItem('chord-progression-lab-theme');
+      if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t;
+    } catch (e) { /* storage unavailable */ }
+  })();
+</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
 
-<div class="app">
-  <header class="masthead">
+<header class="site-header">
+  <div class="title-row">
     <div>
+      <p class="eyebrow">Music theory · Interactive</p>
       <h1>Progression Lab</h1>
-      <p>Build chord progressions in any key and hear them on piano. See each chord's job, how the voices move, and where the roots travel on the circle of fifths.</p>
+      <div class="title-rule" aria-hidden="true"><span></span><span></span><span></span></div>
+      <p class="lede">Build chord progressions in any key and meter, hear them on piano, and see each chord's job, how the voices move, and where the roots travel on the circle of fifths.</p>
+      <p class="present-hint">Alt + Shift + P toggles · Esc exits</p>
     </div>
-    <div class="shortcuts" aria-label="Keyboard shortcuts">
-      <span><kbd>Space</kbd> play / stop</span>
-      <span><kbd>1</kbd>–<kbd>7</kbd> add chord</span>
-      <span><kbd>Del</kbd> remove selected</span>
+    <div class="header-actions">
+      <button id="theme" class="btn ghost" type="button" title="Switch between automatic, light and dark colors">Theme: auto</button>
+      <button id="present" class="btn ghost" type="button" aria-pressed="false" title="Larger text and controls for projecting. Escape exits.">Present</button>
     </div>
-  </header>
+  </div>
+</header>
 
-  <section class="transport" aria-label="Playback and key">
-    <div class="t-group">
-      <button type="button" id="play" class="btn-play">
-        <svg class="i-play" viewBox="0 0 14 14" aria-hidden="true"><path d="M2 1l11 6-11 6z"/></svg>
-        <svg class="i-stop" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="2" width="10" height="10" rx="1.5"/></svg>
-        <span>Play</span>
-      </button>
-      <label class="check"><input type="checkbox" id="loop" checked> Loop</label>
-    </div>
-
-    <div class="t-group">
-      <label class="t-label" for="tonic">Key</label>
-      <select id="tonic"></select>
-      <div class="seg" role="group" aria-label="Mode">
-        <button type="button" data-mode="major">Major</button>
-        <button type="button" data-mode="minor">Minor</button>
-      </div>
-      <div class="nudge" role="group" aria-label="Transpose">
-        <button type="button" id="down" title="Down a half step">−½</button>
-        <button type="button" id="up" title="Up a half step">+½</button>
+<main id="main">
+  <section class="card controls" aria-labelledby="controls-title">
+    <div class="panel-head">
+      <h2 id="controls-title">Playback and Key</h2>
+      <div class="transport">
+        <button type="button" id="play" class="btn primary btn-play">
+          <svg class="i-play" viewBox="0 0 14 14" aria-hidden="true" focusable="false"><path d="M2 1l11 6-11 6z"/></svg>
+          <svg class="i-stop" viewBox="0 0 14 14" aria-hidden="true" focusable="false"><rect x="2" y="2" width="10" height="10" rx="1.5"/></svg>
+          <span>Play</span>
+        </button>
+        <label class="check"><input type="checkbox" id="loop" checked> Loop</label>
       </div>
     </div>
 
-    <div class="key-info" aria-live="polite">
-      <strong id="keyName">C major</strong>
-      <small><span id="keySig"></span></small>
-      <div class="scale" id="scale"></div>
-    </div>
+    <div class="controls-grid">
+      <div class="control">
+        <div class="control-head">
+          <label for="tonic">Key</label>
+          <output id="keyName" for="tonic">C major</output>
+        </div>
+        <div class="control-row">
+          <select id="tonic"></select>
+          <div class="presets" role="group" aria-label="Mode">
+            <button type="button" class="chip" data-mode="major" aria-pressed="true">Major</button>
+            <button type="button" class="chip" data-mode="minor" aria-pressed="false">Minor</button>
+          </div>
+          <div class="presets" role="group" aria-label="Transpose by a half step">
+            <button type="button" class="chip" id="down">Down ½</button>
+            <button type="button" class="chip" id="up">Up ½</button>
+          </div>
+        </div>
+        <p class="control-sub"><span id="keySig">no sharps or flats</span>: <span id="scale" class="scale"></span></p>
+      </div>
 
-    <div class="t-group">
-      <label class="t-label" for="tempo">Tempo</label>
-      <input type="range" id="tempo" min="50" max="180" step="1">
-      <span class="check"><output id="tempoOut" for="tempo">92</output> BPM</span>
-    </div>
+      <div class="control">
+        <div class="control-head">
+          <label for="meter">Meter</label>
+          <output id="meterKind" for="meter">Simple quadruple</output>
+        </div>
+        <div class="control-row">
+          <select id="meter"></select>
+          <label class="select">Pattern
+            <select id="pattern">
+              <option value="sustain">Sustained</option>
+              <option value="pulse">Pulse on each beat</option>
+              <option value="arpeggio">Arpeggio</option>
+              <option value="oompah">Bass + chords</option>
+            </select>
+          </label>
+        </div>
+        <p class="control-sub" id="meterDesc">Four beats, each split into two.</p>
+      </div>
 
-    <div class="t-group">
-      <label class="t-label" for="bassLevel">Bass</label>
-      <input type="range" id="bassLevel" min="0" max="200" step="5">
-      <span class="check"><output id="bassOut" for="bassLevel">100</output>%</span>
-      <label class="check" title="Also play the bass an octave higher, which helps on laptop speakers"><input type="checkbox" id="bassOct"> +8va</label>
-    </div>
+      <div class="control">
+        <div class="control-head">
+          <label for="tempo">Tempo</label>
+          <output id="tempoOut" for="tempo">♩ = 92</output>
+        </div>
+        <input type="range" id="tempo" min="40" max="180" step="1" value="92" aria-describedby="tempo-sub">
+        <p class="control-sub" id="tempo-sub">Beats per minute, counted in <span id="beatNoteName">quarter notes</span>.</p>
+      </div>
 
-    <div class="t-group">
-      <label class="t-label" for="style">Rhythm</label>
-      <select id="style">
-        <option value="sustain">Sustained</option>
-        <option value="pulse">Quarter-note pulse</option>
-        <option value="arpeggio">Arpeggio</option>
-        <option value="waltz">Waltz (3/4)</option>
-      </select>
-      <div class="seg" role="group" aria-label="Voicing">
-        <button type="button" data-voicing="smooth">Smooth</button>
-        <button type="button" data-voicing="block">Block</button>
+      <div class="control">
+        <div class="control-head">
+          <label for="volume">Volume</label>
+          <output id="volumeOut" for="volume">80%</output>
+        </div>
+        <input type="range" id="volume" min="0" max="100" step="5" value="80" aria-describedby="volume-sub">
+        <p class="control-sub" id="volume-sub">Overall loudness of the piano.</p>
+      </div>
+
+      <div class="control">
+        <div class="control-head">
+          <label for="bassLevel">Bass</label>
+          <output id="bassOut" for="bassLevel">100%</output>
+        </div>
+        <input type="range" id="bassLevel" min="0" max="200" step="5" value="100" aria-describedby="bass-sub">
+        <label class="check"><input type="checkbox" id="bassOct"> Also play the bass an octave higher</label>
+        <p class="control-sub" id="bass-sub">Bass level relative to the chords. The octave option helps on laptop and phone speakers.</p>
+      </div>
+
+      <div class="control">
+        <div class="control-head"><span class="control-label" id="voicing-label">Voicing</span></div>
+        <div class="presets" role="group" aria-labelledby="voicing-label">
+          <button type="button" class="chip" data-voicing="smooth" aria-pressed="true">Smooth</button>
+          <button type="button" class="chip" data-voicing="block" aria-pressed="false">Block</button>
+        </div>
+        <p class="control-sub">Smooth moves each voice to the nearest chord tone. Block stacks every chord in root position.</p>
       </div>
     </div>
   </section>
 
-  <section class="panel builder" aria-labelledby="h-prog">
+  <section class="card controls builder" aria-labelledby="h-prog">
     <div class="panel-head">
-      <h2 id="h-prog">Your progression <small id="count"></small></h2>
+      <h2 id="h-prog">Your Progression</h2>
+      <p class="card-sub" id="count">4 bars</p>
       <div class="actions">
         <button type="button" class="btn" id="suggest">Suggest one</button>
-        <button type="button" class="btn ghost" id="clear">Clear</button>
+        <button type="button" class="btn" id="clear">Clear</button>
       </div>
     </div>
-    <div class="legend" aria-label="Chord functions">
-      <span class="c-tonic"><i></i>Tonic: home</span>
-      <span class="c-sub"><i></i>Predominant: moving away</span>
-      <span class="c-dom"><i></i>Dominant: tension toward home</span>
-      <span class="c-chrom"><i></i>Borrowed or chromatic</span>
+
+    <div class="beat-strip">
+      <p class="beat-caption"><strong id="beatMeter">4/4</strong> <span id="beatCount"></span></p>
+      <ol class="beats" id="beats" aria-hidden="true"></ol>
     </div>
-    <ol class="timeline" id="timeline"></ol>
+
+    <ul class="legend" aria-label="Chord functions">
+      <li><span class="akey fn-tonic" aria-hidden="true"></span>Tonic: home</li>
+      <li><span class="akey fn-sub" aria-hidden="true"></span>Predominant: moving away</li>
+      <li><span class="akey fn-dom" aria-hidden="true"></span>Dominant: tension toward home</li>
+      <li><span class="akey fn-chrom" aria-hidden="true"></span>Borrowed or chromatic</li>
+    </ul>
+    <ol class="timeline" id="timeline" aria-label="Bars of the progression"></ol>
 
     <div class="tension">
-      <div class="tension-head"><span class="t-label">Tension curve</span><span id="tensionNow"></span></div>
+      <div class="tension-head"><span class="control-label">Tension curve</span><span id="tensionNow"></span></div>
       <div class="tension-axis" aria-hidden="true"><span>pull</span><span>rest</span></div>
-      <svg id="tension" role="img" aria-label="Tension of each bar"></svg>
+      <svg id="tension" role="img" aria-label="Tension curve across the bars. Each bar's tension value is written on its card above."></svg>
     </div>
 
     <div class="palette">
-      <h3>Chords in the key</h3>
-      <div class="chips" id="palDiatonic"></div>
-      <h3>Borrowed and chromatic</h3>
-      <div class="chips" id="palExtra"></div>
+      <h3 id="h-diatonic">Chords in the key</h3>
+      <div class="pal" id="palDiatonic" role="group" aria-labelledby="h-diatonic"></div>
+      <h3 id="h-extra">Borrowed and chromatic</h3>
+      <div class="pal" id="palExtra" role="group" aria-labelledby="h-extra"></div>
       <p class="hint" id="palHint"></p>
     </div>
   </section>
 
-  <section class="panel" aria-labelledby="h-keys">
+  <section class="card visual-card" aria-labelledby="h-keys">
     <div class="panel-head">
       <h2 id="h-keys">Keyboard</h2>
-      <span class="piano-foot"><span id="pianoNow"></span></span>
+      <p class="card-sub" id="pianoNow"></p>
     </div>
-    <div class="piano-wrap"><div class="piano" id="piano"></div></div>
-    <p class="hint">The darker key is the bass note. Click any key to hear it.</p>
+    <div class="piano-wrap"><div class="piano" id="piano" role="group" aria-label="Piano keyboard from C2 to E6"></div></div>
+    <p class="hint">Keys with a name label are the notes of the chord; the darkest shaded key is the bass note. Click or press any key to hear it.</p>
   </section>
 
   <div class="grid-2">
-    <section class="panel" aria-labelledby="h-chord">
+    <section class="card controls" aria-labelledby="h-chord">
       <h2 id="h-chord">Chord</h2>
-      <div class="inspector" id="inspector" aria-live="polite"></div>
+      <div class="inspector" id="inspector"></div>
     </section>
 
-    <section class="panel" aria-labelledby="h-circle">
+    <section class="card visual-card" aria-labelledby="h-circle">
       <div class="panel-head">
-        <h2 id="h-circle">Circle of fifths</h2>
-        <div class="seg" role="group" aria-label="What a click on the circle does">
-          <button type="button" data-cof="play">Play only</button>
-          <button type="button" data-cof="key">Play + change key</button>
+        <h2 id="h-circle">Circle of Fifths</h2>
+        <div class="presets" role="group" aria-label="What a click on the circle does">
+          <button type="button" class="chip" data-cof="play" aria-pressed="false">Play only</button>
+          <button type="button" class="chip" data-cof="key" aria-pressed="true">Play + change key</button>
         </div>
       </div>
       <div class="circle-box">
-        <svg id="circle" viewBox="0 0 420 420" role="group" aria-label="Circle of fifths. Shaded wedges are the chords of the current key."></svg>
+        <svg id="circle" viewBox="0 0 420 420" role="group" aria-labelledby="circle-title"></svg>
         <div id="circleStats"></div>
       </div>
     </section>
   </div>
 
-  <section class="panel" aria-labelledby="h-vl">
+  <section class="card visual-card" aria-labelledby="h-vl">
     <div class="panel-head">
-      <h2 id="h-vl">Voice leading</h2>
-      <div class="seg" role="group" aria-label="Voicing">
-        <button type="button" data-voicing="smooth">Smooth</button>
-        <button type="button" data-voicing="block">Block</button>
+      <h2 id="h-vl">Voice Leading</h2>
+      <div class="presets" role="group" aria-label="Voicing">
+        <button type="button" class="chip" data-voicing="smooth" aria-pressed="true">Smooth</button>
+        <button type="button" class="chip" data-voicing="block" aria-pressed="false">Block</button>
       </div>
     </div>
-    <div class="vl-tools">
-      <div class="legend">
-        <span><i class="line" style="--c:var(--hold)"></i>Common tone held</span>
-        <span><i class="line" style="--c:var(--accent)"></i>Step (1–2 semitones)</span>
-        <span><i class="line" style="--c:var(--leap)"></i>Leap (3+)</span>
-        <span><i class="dash"></i>Bass line</span>
-      </div>
-    </div>
-    <p class="panel-note">Each column is one bar, and each dot is a note on the piano. Click a dot to hear that note, or click anywhere else in a column to hear the whole chord. Switch between Smooth and Block to compare. Numbers along the bottom count how many semitones the upper voices moved.</p>
-    <div class="vl-wrap"><svg id="vl" role="img" aria-label="Voice-leading graph"></svg></div>
+    <ul class="legend" aria-label="Line and marker key">
+      <li><span class="lkey hold" aria-hidden="true"></span>Thick grey line: common tone held</li>
+      <li><span class="lkey step" aria-hidden="true"></span>Solid blue line: step of 1 or 2 semitones</li>
+      <li><span class="lkey leap" aria-hidden="true"></span>Dashed orange line: leap of 3 or more</li>
+      <li><span class="mkey square" aria-hidden="true"></span>Square: bass note</li>
+      <li><span class="mkey round" aria-hidden="true"></span>Circle: upper voice</li>
+    </ul>
+    <p class="hint">Each column is one bar. Click a note to hear it, or click anywhere else in a column (or Tab to it and press Enter) to hear the whole chord. Numbers along the bottom count how many semitones the upper voices moved.</p>
+    <div class="vl-wrap"><svg id="vl" role="group" aria-labelledby="vl-title"></svg></div>
     <div id="vlStats"></div>
+    <details class="table-view">
+      <summary>Show the voicings as a table</summary>
+      <div class="table-scroll">
+        <table id="vlTable">
+          <caption class="visually-hidden">Notes in each bar, from the bass up, and how far the upper voices move into that bar</caption>
+          <thead>
+            <tr>
+              <th scope="col">Bar</th>
+              <th scope="col">Chord</th>
+              <th scope="col">Bass</th>
+              <th scope="col">Upper voices, low to high</th>
+              <th scope="col" class="num">Upper-voice motion (semitones)</th>
+              <th scope="col" class="num">Common tones held</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
   </section>
 
-  <section class="panel tabs" aria-label="Library, cadences and ear training">
-    <div class="tablist" role="tablist">
-      <button type="button" role="tab" data-tab="library">Library</button>
-      <button type="button" role="tab" data-tab="cadences">Cadences</button>
-      <button type="button" role="tab" data-tab="quiz">Ear training</button>
+  <section class="card controls tabs-panel" aria-labelledby="h-explore">
+    <h2 id="h-explore">Listen and Practice</h2>
+    <div class="tablist" role="tablist" aria-labelledby="h-explore">
+      <button type="button" role="tab" id="tabbtn-library" aria-controls="tab-library" aria-selected="true">Library</button>
+      <button type="button" role="tab" id="tabbtn-cadences" aria-controls="tab-cadences" aria-selected="false" tabindex="-1">Cadences</button>
+      <button type="button" role="tab" id="tabbtn-quiz" aria-controls="tab-quiz" aria-selected="false" tabindex="-1">Ear training</button>
     </div>
-    <div id="tab-library" role="tabpanel"></div>
-    <div id="tab-cadences" role="tabpanel" hidden></div>
-    <div id="tab-quiz" role="tabpanel" hidden></div>
+    <div id="tab-library" class="tabpanel" role="tabpanel" aria-labelledby="tabbtn-library" tabindex="0"></div>
+    <div id="tab-cadences" class="tabpanel" role="tabpanel" aria-labelledby="tabbtn-cadences" tabindex="0" hidden></div>
+    <div id="tab-quiz" class="tabpanel" role="tabpanel" aria-labelledby="tabbtn-quiz" tabindex="0" hidden></div>
   </section>
-</div>
+
+  <section class="card notes" aria-labelledby="h-notes">
+    <details>
+      <summary><h2 id="h-notes">About the Model</h2></summary>
+      <h3>Sound</h3>
+      <p>The piano is synthesized in the browser with the Web Audio API: a two-operator FM tone for the chords and a bass built from its first four harmonics, so the bass pitch comes through on small speakers. It is not a recorded piano.</p>
+      <h3>Meter and rhythm</h3>
+      <p>Each bar holds one chord and is counted in eighth-note pulses. Simple meters (2/4, 3/4, 4/4, 5/4) split each beat into two pulses; compound meters (6/8, 9/8, 12/8) split each beat into three, and their tempo counts dotted quarter notes. 7/8 groups its pulses 2 + 2 + 3 and counts its tempo in quarter notes. The downbeat is played loudest, the meter's other strong beats next, and the pulses between beats softest.</p>
+      <h3>Voicing</h3>
+      <p>Smooth voicing searches the chord tones between G3 and A5 for the set that moves the upper voices the fewest total semitones from the previous chord, while keeping them close together. Block voicing stacks each chord upward from its root near middle C, with no voice leading.</p>
+      <h3>Tension and next-chord hints</h3>
+      <p>Tension values (0 to 100) are illustrative scores, not measurements. Each chord starts from a value for its function (tonic low, dominant high), and 7ths, suspensions and inversions add to it. The "often next" hints follow common-practice tendencies, such as V moving to I or vi; any chord can follow any other.</p>
+      <h3>Spelling and the circle of fifths</h3>
+      <p>Notes are spelled from the key's scale, so a key uses one letter per scale degree (F♯ in D major, G♭ in E♭ minor). On the circle, major keys sit on the outer ring and their relative minors on the inner ring; a diminished chord is drawn on the inner ring beside its relative major.</p>
+    </details>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <p>Progression Lab is an interactive chord progression demo; all sound is generated in the browser. <a href="https://github.com/analyticalchem/chord-progression-lab">Source on GitHub</a> · Part of analyticalchem · <a href="https://analyticalchem.github.io/">All projects</a></p>
+</footer>
+<p id="present-status" class="visually-hidden" role="status"></p>
 
 <script src="theory.js"></script>
 <script src="data.js"></script>
 <script src="audio.js"></script>
 <script src="views.js"></script>
+<script src="chrome.js"></script>
 <script src="quiz.js"></script>
 <script src="app.js"></script>
+</body>
+</html>

@@ -103,3 +103,29 @@ const CADENCES = [
 ];
 
 const toInsts = prog => prog.map(([id, ext = 'triad', inv = 0]) => ({ id, ext, inv }));
+
+/* Meters. The bar is counted in eighth-note pulses: `beats` lists how many pulses each felt beat
+   holds, `strong` lists the beats that take an accent, and `perBeat` says how many pulses the
+   tempo's beat note spans (2 for ♩, 3 for ♩.). 7/8 counts its tempo in quarter notes, so its
+   last beat is half again as long as the first two. */
+const METERS = [
+  { id: '2/4', beats: [2, 2], strong: [0], perBeat: 2, beatNote: '♩', kind: 'Simple duple', desc: 'Two beats, each split into two eighth notes.' },
+  { id: '3/4', beats: [2, 2, 2], strong: [0], perBeat: 2, beatNote: '♩', kind: 'Simple triple', desc: 'Three beats, each split into two eighth notes.' },
+  { id: '4/4', beats: [2, 2, 2, 2], strong: [0, 2], perBeat: 2, beatNote: '♩', kind: 'Simple quadruple', desc: 'Four beats, each split into two. Beat 3 takes a lighter accent.' },
+  { id: '5/4', beats: [2, 2, 2, 2, 2], strong: [0, 3], perBeat: 2, beatNote: '♩', kind: 'Irregular, 3 + 2', desc: 'Five beats grouped 3 + 2, with a lighter accent on beat 4.' },
+  { id: '6/8', beats: [3, 3], strong: [0], perBeat: 3, beatNote: '♩.', kind: 'Compound duple', desc: 'Two beats, each split into three eighth notes.' },
+  { id: '7/8', beats: [2, 2, 3], strong: [0], perBeat: 2, beatNote: '♩', kind: 'Irregular, 2 + 2 + 3', desc: 'Seven eighth notes grouped 2 + 2 + 3. The last beat is half again as long as the others.' },
+  { id: '9/8', beats: [3, 3, 3], strong: [0], perBeat: 3, beatNote: '♩.', kind: 'Compound triple', desc: 'Three beats, each split into three eighth notes.' },
+  { id: '12/8', beats: [3, 3, 3, 3], strong: [0, 2], perBeat: 3, beatNote: '♩.', kind: 'Compound quadruple', desc: 'Four beats, each split into three. Common in slow blues and ballads.' },
+];
+const meterById = id => METERS.find(m => m.id === id) || METERS[2];
+
+// Counting syllables for each pulse: the beat number, then "&" in twos or "la li" in threes.
+function meterCounts(meter) {
+  const out = [];
+  meter.beats.forEach((n, b) => {
+    out.push({ text: String(b + 1), beat: b, start: true });
+    for (let k = 1; k < n; k++) out.push({ text: n === 3 ? ['la', 'li'][k - 1] : '&', beat: b, start: false });
+  });
+  return out;
+}
