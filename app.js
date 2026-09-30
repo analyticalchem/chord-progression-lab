@@ -22,7 +22,7 @@
     tonic: 0, mode: 'major', prog: toInsts(PRESETS[0].prog).map(withUid),
     selected: null, selectedRest: null, current: -1, currentRest: null, pulse: -1, playing: false, preview: null,
     tempo: 92, meter: '4/4', pattern: 'sustain', volume: 80, voicing: 'smooth', loop: true, tab: 'library',
-    bassLevel: 100, bassOctave: false, circleClick: 'key', circlePath: true,
+    bassLevel: 100, bassOctave: false, circleClick: 'play', circlePath: true,
   };
   let D = {}; // derived: key, chords, voicings, spans, song
   const meter = () => meterById(state.meter);
@@ -51,6 +51,10 @@
     try {
       const s = {};
       SAVED.forEach(k => { s[k] = state[k]; });
+      // Saved as circleMode: the older circleClick field held the old default for everyone, so it
+      // is ignored and Play only becomes the starting choice once.
+      s.circleMode = state.circleClick;
+      delete s.circleClick;
       s.prog = state.prog.map(({ id, ext, inv, len, rest }) => [id, ext, inv, len, rest || 0]);
       localStorage.setItem(STORE, JSON.stringify(s));
     } catch (e) { /* storage unavailable */ }
@@ -72,7 +76,7 @@
       state.tab = TABS.includes(s.tab) ? s.tab : 'library';
       state.bassLevel = num(s.bassLevel, 0, 200, 100);
       state.bassOctave = !!s.bassOctave;
-      state.circleClick = s.circleClick === 'play' ? 'play' : 'key';
+      state.circleClick = s.circleMode === 'key' ? 'key' : 'play';
       state.circlePath = s.circlePath !== false;
       if (Array.isArray(s.prog)) {
         state.prog = toInsts(s.prog).filter(i => Theory.BY_ID[state.mode][i.id]).slice(0, 16)
