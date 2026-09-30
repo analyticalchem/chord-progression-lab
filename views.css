@@ -25,7 +25,9 @@
 .insp-empty { color: var(--text-secondary); }
 .insp-head { position: relative; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 14px 10px;
   border-radius: 10px; background: color-mix(in srgb, var(--fn) 9%, var(--surface)); border: 1px solid var(--border); overflow: hidden; }
-.insp-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: var(--fn); }
+.insp-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--band, var(--fn)); }
+.insp-head.rest-head { background: var(--surface-2); border: 2px dashed var(--border-strong); }
+.insp-head.rest-head::before { display: none; }
 .insp-rn { font-size: 3.2rem; line-height: 1; min-width: 4rem; }
 .insp-meta { display: grid; gap: 6px; }
 .insp-name { font-family: var(--font-mono); font-size: 1.15rem; font-weight: 600; }

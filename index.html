@@ -148,12 +148,12 @@
     </div>
 
     <ul class="legend" role="list" aria-label="Chord functions">
-      <li class="lg"><span class="lg-key thick fn-tonic" aria-hidden="true"></span><span>Tonic, home: blue band</span></li>
-      <li class="lg"><span class="lg-key thick fn-sub" aria-hidden="true"></span><span>Predominant, moving away: green band</span></li>
-      <li class="lg"><span class="lg-key thick fn-dom" aria-hidden="true"></span><span>Dominant, tension toward home: orange band</span></li>
-      <li class="lg"><span class="lg-key thick fn-chrom" aria-hidden="true"></span><span>Borrowed or chromatic: violet band</span></li>
+      <li class="lg"><span class="lg-key thick fn-tonic" aria-hidden="true"></span><span>Tonic, home: solid blue band, round dot</span></li>
+      <li class="lg"><span class="lg-key thick fn-sub" aria-hidden="true"></span><span>Predominant, moving away: dashed green band, square dot</span></li>
+      <li class="lg"><span class="lg-key thick fn-dom" aria-hidden="true"></span><span>Dominant, tension toward home: dotted orange band, diamond dot</span></li>
+      <li class="lg"><span class="lg-key thick fn-chrom" aria-hidden="true"></span><span>Borrowed or chromatic: double violet band, triangle dot</span></li>
     </ul>
-    <p class="legend-note">Each chord's function is also written on it. For short chords it is in the Chord panel and in the table under Voice Leading.</p>
+    <p class="legend-note">Bands top each chord and palette button; the dot shapes mark chords on the tension curve and the circle of fifths. Each chord's function is also written on it, and for short chords in the Chord panel and the table under Voice Leading.</p>
     <!-- The lane is a time axis, so it scrolls sideways inside its box when it is longer than the
          screen (WCAG 1.4.10 exception for content that needs two-dimensional layout). -->
     <div class="visual-scroll lane-wrap" data-scroll-label="Progression timeline">
@@ -162,7 +162,7 @@
         <ol class="timeline" id="timeline" aria-label="Chords of the progression, in order"></ol>
       </div>
     </div>
-    <p class="hint">Drag either edge of a chord to change how long it plays; it snaps to each beat. The chords after it move to make room, and the chords before it stay put. The Length slider in the Chord panel does the same from the keyboard.</p>
+    <p class="hint">Drag a chord's right edge to change how long it plays; the chords after it move to make room. Drag its left edge to move only where it starts: nothing else moves, and starting later leaves a rest, which plays silence. Drop a chord onto a rest, or select the rest and pick a chord below, to fill it. Both edges snap to each beat; the Length and Starts sliders in the Chord panel do the same from the keyboard.</p>
     <p class="card-sub" id="laneNote"></p>
 
     <div class="tension">
@@ -210,9 +210,9 @@
         <p class="card-sub" id="cofPlayed" role="status"></p>
         <ul class="legend" role="list" aria-label="Circle of fifths key">
           <li class="lg"><span class="lg-wash" style="--key: var(--accent)" aria-hidden="true"></span><span>Shaded wedges: the chords of the key, with their numerals; darkest: the key itself, named in the middle</span></li>
-          <li class="lg"><span class="lg-dot" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Dots in the middle: your chords' roots, lined up with their wedges; outer row major, inner row minor</span></li>
+          <li class="lg"><span class="lg-dot" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Dots in the middle: your chords' roots, lined up with their wedges; outer row major, inner row minor; the shape shows the chord's function, as in the key above the timeline</span></li>
           <li class="lg"><span class="lg-key" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Arrows: how the roots move from chord to chord</span></li>
-          <li class="lg"><span class="lg-dot hollow now" style="--key: var(--accent)" aria-hidden="true"></span><span>Larger dot with a thick blue outline: the chord now playing</span></li>
+          <li class="lg"><span class="lg-dot hollow now" style="--key: var(--accent)" aria-hidden="true"></span><span>Larger mark with a thick blue outline: the chord now playing</span></li>
         </ul>
         <div id="circleStats"></div>
       </div>
@@ -248,6 +248,7 @@
               <th scope="col">Chord no.</th>
               <th scope="col">Chord</th>
               <th scope="col">Function</th>
+              <th scope="col" class="num">Rest before (beats)</th>
               <th scope="col">Starts</th>
               <th scope="col" class="num">Length (beats)</th>
               <th scope="col" class="num">Tension</th>
@@ -281,7 +282,7 @@
       <h3>Sound</h3>
       <p>The piano is synthesized in the browser with the Web Audio API: a two-operator FM tone for the chords and a bass built from its first four harmonics, so the bass pitch comes through on small speakers. It is not a recorded piano.</p>
       <h3>Meter and rhythm</h3>
-      <p>Each chord lasts a whole number of beats, one bar unless you change it. A chord's length is kept as a share of a bar, so when you change the meter a one-bar chord stays one bar and a half-bar chord stays half a bar, rounded to the nearest beat. The accompaniment pattern follows the meter's beats, and every chord change sounds its bass and chord together. Each loop starts again on beat 1, so if the chords do not fill the last bar, that bar is played short.</p>
+      <p>Each chord lasts a whole number of beats, one bar unless you change it, and may have a rest before it. Nothing plays during a rest; the beat keeps counting. A chord's length is kept as a share of a bar, so when you change the meter a one-bar chord stays one bar and a half-bar chord stays half a bar, rounded to the nearest beat. The accompaniment pattern follows the meter's beats, and every chord change sounds its bass and chord together. Each loop starts again on beat 1, so if the chords do not fill the last bar, that bar is played short.</p>
       <p>Time is counted in eighth-note pulses. Simple meters (2/4, 3/4, 4/4, 5/4) split each beat into two pulses; compound meters (6/8, 9/8, 12/8) split each beat into three, and their tempo counts dotted quarter notes. 7/8 groups its pulses 2 + 2 + 3 and counts its tempo in quarter notes. The downbeat is played loudest, the meter's other strong beats next, and the pulses between beats softest.</p>
       <h3>Voicing</h3>
       <p>Smooth voicing searches the chord tones between G3 and A5 for the set that moves the upper voices the fewest total semitones from the previous chord, while keeping them close together. Block voicing stacks each chord upward from its root near middle C, with no voice leading.</p>

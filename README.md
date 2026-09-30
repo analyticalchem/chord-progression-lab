@@ -7,7 +7,7 @@ An interactive chord progression demo for the browser. Build progressions in any
 ## Features
 
 - **Progression builder:** add chords from the key or borrowed/chromatic chords (♭VII, minor iv, secondary dominants, Neapolitan, Picardy third), then reorder, replace, and edit each one.
-- **Chord lengths:** drag either edge of a chord on the time lane to change how long it plays, snapping to each beat (1 beat to 4 bars). The chords after it move to make room and the chords before it never change. The Length slider in the Chord panel does the same from the keyboard. Lengths are kept as a share of a bar, so changing the meter keeps one-bar chords one bar long.
+- **Chord lengths and rests:** on the time lane, drag a chord's right edge to change how long it plays (the chords after it move), or its left edge to move only its start, which leaves a rest of silence before it. Drop a chord onto a rest, or select the rest and pick a chord, to fill it. Everything snaps to beats (1 beat to 4 bars); the Length and Starts sliders in the Chord panel do the same from the keyboard. Lengths are kept as a share of a bar, so changing the meter keeps one-bar chords one bar long.
 - **Meters and patterns:** 2/4, 3/4, 4/4, 5/4 (3 + 2), 6/8, 7/8 (2 + 2 + 3), 9/8 and 12/8, each with sustained, pulse, arpeggio or bass + chords accompaniment. A beat strip shows the count ("1 la li 2 la li…") and lights each pulse as it plays. Compound meters count their tempo in dotted quarter notes.
 - **Function and tension:** chords are marked as tonic, predominant, dominant, or chromatic, with a tension curve across the progression.
 - **Chord color:** triads, 7ths, 6ths, add9, 9ths, sus2, sus4, and inversions, labeled with Roman numerals and figured bass.

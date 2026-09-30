@@ -103,9 +103,9 @@ const CADENCES = [
   },
 ];
 
-// Each chord is [defId, ext, inversion, length in bars]. Lengths are kept in bars so a chord keeps
-// its share of the bar when the meter changes (one bar of 4/4 becomes one bar of 3/4).
-const toInsts = prog => prog.map(([id, ext = 'triad', inv = 0, len = 1]) => ({ id, ext, inv, len }));
+// Each chord is [defId, ext, inversion, length in bars, rest before it in bars]. Lengths and rests
+// are kept in bars so they keep their share of the bar when the meter changes.
+const toInsts = prog => prog.map(([id, ext = 'triad', inv = 0, len = 1, rest = 0]) => ({ id, ext, inv, len, rest }));
 
 /* Meters. The bar is counted in eighth-note pulses: `beats` lists how many pulses each felt beat
    holds, `strong` lists the beats that take an accent, and `perBeat` says how many pulses the

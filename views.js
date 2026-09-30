@@ -4,6 +4,15 @@ const Views = (() => {
   const BLACK = [1, 3, 6, 8, 10];
   const PC_NAMES = ['C', 'C♯/D♭', 'D', 'D♯/E♭', 'E', 'F', 'F♯/G♭', 'G', 'G♯/A♭', 'A', 'A♯/B♭', 'B'];
   const cssPx = name => parseFloat(getComputedStyle(document.documentElement).getPropertyValue(name)) || 0;
+  // A function's mark has its own shape as well as its colour, so it reads without colour
+  // (circle tonic, square predominant, diamond dominant, triangle chromatic), sized to match areas.
+  function mark(x, y, r, fn, cls) {
+    const c = `class="${cls} fn-${fn}"`;
+    if (fn === 'sub') return `<rect x="${x - r * 0.9}" y="${y - r * 0.9}" width="${r * 1.8}" height="${r * 1.8}" ${c}/>`;
+    if (fn === 'dom') { const d = r * 1.25; return `<path d="M${x} ${y - d}L${x + d} ${y}L${x} ${y + d}L${x - d} ${y}Z" ${c}/>`; }
+    if (fn === 'chrom') { const d = r * 1.35; return `<path d="M${x} ${y - d}L${x + d * 0.87} ${y + d * 0.5}L${x - d * 0.87} ${y + d * 0.5}Z" ${c}/>`; }
+    return `<circle cx="${x}" cy="${y}" r="${r}" ${c}/>`;
+  }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   // ---------- Keyboard ----------
@@ -117,13 +126,13 @@ const Views = (() => {
     const seen = new Set();
     pts.forEach(([x, y], i) => {
       const k = `${Math.round(x)},${Math.round(y)}`;
-      if (!seen.has(k)) path += `<circle cx="${x}" cy="${y}" r="${r}" class="cof-dot fn-${chords[i].color}"/>`;
+      if (!seen.has(k)) path += mark(x, y, r, chords[i].color, 'cof-dot');
       seen.add(k);
     });
-    // The chord now playing: its own dot, larger, with a thick accent outline over a surface rim (8.6).
+    // The chord now playing: its own mark, larger, with a thick accent outline over a surface rim (8.6).
     if (current >= 0 && pts[current]) {
-      const [x, y] = pts[current];
-      path += `<circle cx="${x}" cy="${y}" r="${r * 1.6}" class="cof-now-rim"/><circle cx="${x}" cy="${y}" r="${r * 1.6}" class="cof-dot cof-now fn-${chords[current].color}"/>`;
+      const [x, y] = pts[current], fn = chords[current].color;
+      path += mark(x, y, r * 1.6, fn, 'cof-now-rim') + mark(x, y, r * 1.6, fn, 'cof-dot cof-now');
     }
     svg.innerHTML = h + `<g class="cof-path" aria-hidden="true">${path}</g>`;
     svg.querySelectorAll('.cof-seg').forEach(g => {
@@ -223,7 +232,7 @@ const Views = (() => {
     const u = parseFloat(svg.style.getPropertyValue('--sch-u')) || 1;
     const r = (cssPx('--chart-marker') || 5) * u;
     pts.forEach(([x, y], i) => {
-      h += `<circle cx="${x}" cy="${y}" r="${i === current ? r * 1.5 : r}" class="tn-dot fn-${chords[i].color}${i === current ? ' now' : ''}"/>`;
+      h += mark(x, y, i === current ? r * 1.5 : r, chords[i].color, `tn-dot${i === current ? ' now' : ''}`);
     });
     svg.innerHTML = h;
   }

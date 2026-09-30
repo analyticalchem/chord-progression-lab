@@ -215,8 +215,10 @@ const Sound = (() => {
   const barSeconds = (meter, tempo) => meter.beats.reduce((s, n) => s + n, 0) * pulseSeconds(meter, tempo);
 
   // Schedule one bar (or the part of it from `offset`) of a song whose chords can start mid-bar
-  // or last several bars. The pattern follows the meter; each note takes the chord sounding at
-  // its moment and stops where that chord ends. song: { voicings, spans: [{ start, end }], total } in pulses.
+  // or last several bars, with rests between them. The pattern follows the meter; each note takes
+  // the chord sounding at its moment and stops where that chord ends, and nothing sounds in a rest.
+  // song: { voicings, spans: [{ start, end }], gaps: [{ start, end, before }], total } in pulses.
+  // Returned starts use i >= 0 for a chord and i = -1 - k for the rest before chord k.
   function scheduleSegment(song, pos, offset, len, t, meter, pattern, pulse, out) {
     const events = barEvents(meter, pattern).ev
       .filter(e => e.at >= offset && e.at < offset + len)
@@ -231,6 +233,7 @@ const Sound = (() => {
         events.push({ part: 'chord', g: s.start, len: pattern === 'sustain' ? Infinity : 0.9, vel: 0.8, roll: 0.012 });
       }
     });
+    (song.gaps || []).forEach(gp => { if (gp.start >= pos && gp.start < pos + len) starts.push({ i: -1 - gp.before, g: gp.start }); });
     const chordAt = g => song.spans.findIndex(s => g >= s.start && g < s.end);
     events.forEach(e => {
       const ci = chordAt(e.g);
