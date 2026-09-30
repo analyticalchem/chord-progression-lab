@@ -151,7 +151,7 @@ const Views = (() => {
     if (current >= 0 && current < chords.length) h += `<rect x="${LEFT + current * COL + 3}" y="4" width="${COL - 6}" height="${H - 8}" rx="8" class="vl-now"/>`;
     chords.forEach((c, i) => {
       h += `<rect x="${LEFT + i * COL + 3}" y="4" width="${COL - 6}" height="${H - 8}" rx="8" class="vl-col" data-col="${i}"
-        tabindex="0" role="button" aria-label="Play bar ${i + 1}, ${esc(c.name)}"><title>Play ${esc(c.name)}</title></rect>`;
+        tabindex="0" role="button" aria-label="Play chord ${i + 1}, ${esc(c.name)}"><title>Play ${esc(c.name)}</title></rect>`;
       h += `<text x="${x(i)}" y="${22 * scale}" class="vl-num">${esc(c.text)}</text><text x="${x(i)}" y="${38 * scale}" class="vl-chord">${esc(c.name)}</text>`;
     });
     // Lines first so dots sit on top

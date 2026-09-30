@@ -185,7 +185,6 @@ td.notes-cell { font-family: var(--font-mono); }
   .title-rule { width: 200px; }
   .card { padding: 14px; }
   .controls-grid { grid-template-columns: minmax(0, 1fr); }
-  .timeline { grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr)); }
   .slot-rn { font-size: 1.8rem; }
   .insp-row { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .qz-score { margin-left: 0; }

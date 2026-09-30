@@ -1,5 +1,6 @@
-/* Progression Lab: preset progressions and cadences.
-   Each chord is [defId, ext, inversion]. Def ids live in theory.js. */
+/* Progression Lab: preset progressions, cadences and meters.
+   Each chord is [defId, ext, inversion, length in bars]; presets use one bar per chord.
+   Def ids live in theory.js. */
 const PRESETS = [
   {
     name: 'Axis', mode: 'major', genre: 'Pop',
@@ -102,7 +103,9 @@ const CADENCES = [
   },
 ];
 
-const toInsts = prog => prog.map(([id, ext = 'triad', inv = 0]) => ({ id, ext, inv }));
+// Each chord is [defId, ext, inversion, length in bars]. Lengths are kept in bars so a chord keeps
+// its share of the bar when the meter changes (one bar of 4/4 becomes one bar of 3/4).
+const toInsts = prog => prog.map(([id, ext = 'triad', inv = 0, len = 1]) => ({ id, ext, inv, len }));
 
 /* Meters. The bar is counted in eighth-note pulses: `beats` lists how many pulses each felt beat
    holds, `strong` lists the beats that take an accent, and `perBeat` says how many pulses the
@@ -119,6 +122,15 @@ const METERS = [
   { id: '12/8', beats: [3, 3, 3, 3], strong: [0, 2], perBeat: 3, beatNote: '♩.', kind: 'Compound quadruple', desc: 'Four beats, each split into three. Common in slow blues and ballads.' },
 ];
 const meterById = id => METERS.find(m => m.id === id) || METERS[2];
+const barPulses = meter => meter.beats.reduce((s, n) => s + n, 0);
+// Pulse position of beat b counted from the start of the song. Beats cycle through the meter's
+// groups bar after bar, so in 7/8 beat 3 (the third of each bar) is always the long one.
+function beatPulse(meter, b) {
+  const n = meter.beats.length;
+  let p = Math.floor(b / n) * barPulses(meter);
+  for (let k = 0; k < b % n; k++) p += meter.beats[k];
+  return p;
+}
 
 // Counting syllables for each pulse: the beat number, then "&" in twos or "la li" in threes.
 function meterCounts(meter) {

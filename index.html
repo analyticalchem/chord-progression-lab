@@ -153,12 +153,21 @@
       <li><span class="akey fn-dom" aria-hidden="true"></span>Dominant: tension toward home</li>
       <li><span class="akey fn-chrom" aria-hidden="true"></span>Borrowed or chromatic</li>
     </ul>
-    <ol class="timeline" id="timeline" aria-label="Bars of the progression"></ol>
+    <!-- The lane is a time axis, so it scrolls sideways inside its box when it is longer than the
+         screen (WCAG 1.4.10 exception for content that needs two-dimensional layout). -->
+    <div class="lane-wrap">
+      <div class="lane" id="lane">
+        <div class="ruler" id="ruler" aria-hidden="true"></div>
+        <ol class="timeline" id="timeline" aria-label="Chords of the progression, in order"></ol>
+      </div>
+    </div>
+    <p class="hint">Drag the right edge of a chord to change how long it plays; it snaps to each beat. The Length slider in the Chord panel does the same from the keyboard.</p>
+    <p class="card-sub" id="laneNote"></p>
 
     <div class="tension">
       <div class="tension-head"><span class="control-label">Tension curve</span><span id="tensionNow"></span></div>
       <div class="tension-axis" aria-hidden="true"><span>pull</span><span>rest</span></div>
-      <svg id="tension" role="img" aria-label="Tension curve across the bars. Each bar's tension value is written on its card above."></svg>
+      <svg id="tension" role="img" aria-label="Tension curve, one point per chord. Each chord's tension value is in the Chord panel and in the table under Voice Leading."></svg>
     </div>
 
     <div class="palette">
@@ -215,18 +224,21 @@
       <li><span class="mkey square" aria-hidden="true"></span>Square: bass note</li>
       <li><span class="mkey round" aria-hidden="true"></span>Circle: upper voice</li>
     </ul>
-    <p class="hint">Each column is one bar. Click a note to hear it, or click anywhere else in a column (or Tab to it and press Enter) to hear the whole chord. Numbers along the bottom count how many semitones the upper voices moved.</p>
+    <p class="hint">Each column is one chord. Click a note to hear it, or click anywhere else in a column (or Tab to it and press Enter) to hear the whole chord. Numbers along the bottom count how many semitones the upper voices moved.</p>
     <div class="vl-wrap"><svg id="vl" role="group" aria-labelledby="vl-title"></svg></div>
     <div id="vlStats"></div>
     <details class="table-view">
-      <summary>Show the voicings as a table</summary>
+      <summary>Show the chords and voicings as a table</summary>
       <div class="table-scroll">
         <table id="vlTable">
-          <caption class="visually-hidden">Notes in each bar, from the bass up, and how far the upper voices move into that bar</caption>
+          <caption class="visually-hidden">Each chord's length, tension and notes from the bass up, and how far the upper voices move into it</caption>
           <thead>
             <tr>
-              <th scope="col">Bar</th>
+              <th scope="col">Chord no.</th>
               <th scope="col">Chord</th>
+              <th scope="col">Starts</th>
+              <th scope="col" class="num">Length (beats)</th>
+              <th scope="col" class="num">Tension</th>
               <th scope="col">Bass</th>
               <th scope="col">Upper voices, low to high</th>
               <th scope="col" class="num">Upper-voice motion (semitones)</th>
@@ -257,7 +269,8 @@
       <h3>Sound</h3>
       <p>The piano is synthesized in the browser with the Web Audio API: a two-operator FM tone for the chords and a bass built from its first four harmonics, so the bass pitch comes through on small speakers. It is not a recorded piano.</p>
       <h3>Meter and rhythm</h3>
-      <p>Each bar holds one chord and is counted in eighth-note pulses. Simple meters (2/4, 3/4, 4/4, 5/4) split each beat into two pulses; compound meters (6/8, 9/8, 12/8) split each beat into three, and their tempo counts dotted quarter notes. 7/8 groups its pulses 2 + 2 + 3 and counts its tempo in quarter notes. The downbeat is played loudest, the meter's other strong beats next, and the pulses between beats softest.</p>
+      <p>Each chord lasts a whole number of beats, one bar unless you change it. A chord's length is kept as a share of a bar, so when you change the meter a one-bar chord stays one bar and a half-bar chord stays half a bar, rounded to the nearest beat. The accompaniment pattern follows the meter's beats, and every chord change sounds its bass and chord together. Each loop starts again on beat 1, so if the chords do not fill the last bar, that bar is played short.</p>
+      <p>Time is counted in eighth-note pulses. Simple meters (2/4, 3/4, 4/4, 5/4) split each beat into two pulses; compound meters (6/8, 9/8, 12/8) split each beat into three, and their tempo counts dotted quarter notes. 7/8 groups its pulses 2 + 2 + 3 and counts its tempo in quarter notes. The downbeat is played loudest, the meter's other strong beats next, and the pulses between beats softest.</p>
       <h3>Voicing</h3>
       <p>Smooth voicing searches the chord tones between G3 and A5 for the set that moves the upper voices the fewest total semitones from the previous chord, while keeping them close together. Block voicing stacks each chord upward from its root near middle C, with no voice leading.</p>
       <h3>Tension and next-chord hints</h3>

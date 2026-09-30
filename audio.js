@@ -214,18 +214,45 @@ const Sound = (() => {
   const pulseSeconds = (meter, tempo) => 60 / tempo / meter.perBeat;
   const barSeconds = (meter, tempo) => meter.beats.reduce((s, n) => s + n, 0) * pulseSeconds(meter, tempo);
 
-  function scheduleBar(v, t, meter, pattern, tempo, out) {
-    const pulse = pulseSeconds(meter, tempo);
-    const { total, ev } = barEvents(meter, pattern);
-    const up = [...v.upper].sort((a, b) => a - b);
-    const cycle = up.concat(up.slice(1, -1).reverse());
-    ev.forEach(e => {
-      const at = t + e.at * pulse, dur = e.len * pulse;
-      if (e.part === 'bass') bass(out, v.bass, at, dur, e.vel);
-      else if (e.part === 'arp') keys(out, cycle[e.idx % cycle.length], at, dur, e.vel);
-      else v.upper.forEach((m, i) => keys(out, m, at + (e.roll || 0) * i, dur, e.vel * 0.9));
+  // Schedule one bar (or the part of it from `offset`) of a song whose chords can start mid-bar
+  // or last several bars. The pattern follows the meter; each note takes the chord sounding at
+  // its moment and stops where that chord ends. song: { voicings, spans: [{ start, end }], total } in pulses.
+  function scheduleSegment(song, pos, offset, len, t, meter, pattern, pulse, out) {
+    const events = barEvents(meter, pattern).ev
+      .filter(e => e.at >= offset && e.at < offset + len)
+      .map(e => ({ ...e, g: pos + e.at - offset }));
+    const starts = [];
+    song.spans.forEach((s, i) => {
+      if (s.start < pos || s.start >= pos + len) return;
+      starts.push({ i, g: s.start });
+      // A chord change always sounds its bass and chord at once, wherever it falls in the bar.
+      if (!events.some(e => e.g === s.start && e.part === 'bass')) events.push({ part: 'bass', g: s.start, len: Infinity, vel: 0.85 });
+      if (pattern !== 'arpeggio' && !events.some(e => e.g === s.start && e.part === 'chord')) {
+        events.push({ part: 'chord', g: s.start, len: pattern === 'sustain' ? Infinity : 0.9, vel: 0.8, roll: 0.012 });
+      }
     });
-    return { seconds: total * pulse, pulse, total };
+    const chordAt = g => song.spans.findIndex(s => g >= s.start && g < s.end);
+    events.forEach(e => {
+      const ci = chordAt(e.g);
+      if (ci < 0) return;
+      const v = song.voicings[ci];
+      const end = Math.min(e.g + e.len, song.spans[ci].end, pos + len);
+      const at = t + (e.g - pos) * pulse, dur = (end - e.g) * pulse;
+      if (dur <= 0) return;
+      if (e.part === 'bass') bass(out, v.bass, at, dur, e.vel);
+      else if (e.part === 'arp') {
+        const up = [...v.upper].sort((a, b) => a - b);
+        const cycle = up.concat(up.slice(1, -1).reverse());
+        keys(out, cycle[e.idx % cycle.length], at, dur, e.vel);
+      } else {
+        // A rolled chord starts each note a little later, so each also ends a little sooner.
+        v.upper.forEach((m, i) => {
+          const lag = (e.roll || 0) * i;
+          keys(out, m, at + lag, Math.max(0.02, dur - lag), e.vel * 0.9);
+        });
+      }
+    });
+    return starts;
   }
 
   // Listeners hear whenever playback of any kind starts or stops, so every Stop control stays in step.
@@ -237,32 +264,37 @@ const Sound = (() => {
     r.timers.push(setTimeout(fn, Math.max(0, (time - ctx.currentTime) * 1000)));
   }
 
-  // opts: { getBars, tempo, meter, pattern, loop, onChord(i), onPulse(k, i), onEnd() }.
-  // tempo, meter, pattern and loop may be getters so changes apply from the next bar.
+  // opts: { getSong, tempo, meter, pattern, loop, onChord(i), onPulse(k), onEnd() }.
+  // getSong() returns { voicings, spans, total } in pulses; it and tempo, meter, pattern and loop
+  // are read as playback goes, so edits apply from the next bar. Each loop restarts at beat 1.
   function start(opts) {
     init();
     stop();
     const bus = ctx.createGain();
     bus.connect(master);
-    const r = { ...opts, bus, i: 0, next: ctx.currentTime + 0.08, timers: [], ended: false };
+    const r = { ...opts, bus, pos: 0, next: ctx.currentTime + 0.08, timers: [], ended: false };
     run = r;
+    const finish = () => {
+      r.ended = true;
+      later(r, r.next, () => { if (run === r) { stop(); r.onEnd && r.onEnd(); } });
+    };
     const tick = () => {
-      const bars = r.getBars();
       while (!r.ended && r.next < ctx.currentTime + 0.15) {
-        if (r.i >= bars.length) {
-          if (val(r.loop) && bars.length) r.i = 0;
-          else {
-            r.ended = true;
-            later(r, r.next, () => { if (run === r) { stop(); r.onEnd && r.onEnd(); } });
-            break;
-          }
+        const song = r.getSong();
+        if (!song.total) { finish(); break; }
+        if (r.pos >= song.total) {
+          if (val(r.loop)) r.pos = 0;
+          else { finish(); break; }
         }
-        const idx = r.i, at = r.next;
-        const bar = scheduleBar(bars[idx], at, val(r.meter), val(r.pattern), val(r.tempo), r.bus);
-        later(r, at, () => r.onChord && r.onChord(idx));
-        if (r.onPulse) for (let k = 0; k < bar.total; k++) later(r, at + k * bar.pulse, () => r.onPulse(k, idx));
-        r.next += bar.seconds;
-        r.i++;
+        const meter = val(r.meter), pulse = pulseSeconds(meter, val(r.tempo));
+        const barLen = meter.beats.reduce((s, n) => s + n, 0);
+        // Normally a whole bar; shorter after a meter change mid-bar or when the song ends mid-bar.
+        const offset = r.pos % barLen, len = Math.min(barLen - offset, song.total - r.pos), at = r.next;
+        const starts = scheduleSegment(song, r.pos, offset, len, at, meter, val(r.pattern), pulse, r.bus);
+        starts.forEach(s => later(r, at + (s.g - r.pos) * pulse, () => r.onChord && r.onChord(s.i)));
+        if (r.onPulse) for (let k = 0; k < len; k++) later(r, at + k * pulse, () => r.onPulse(offset + k));
+        r.next += len * pulse;
+        r.pos += len;
       }
     };
     r.interval = setInterval(tick, 25);

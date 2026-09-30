@@ -24,8 +24,22 @@
     tempo: 92, meter: '4/4', pattern: 'sustain', volume: 80, voicing: 'smooth', loop: true, tab: 'library',
     bassLevel: 100, bassOctave: false, circleClick: 'key',
   };
-  let D = {}; // derived: key, chords, voicings
+  let D = {}; // derived: key, chords, voicings, spans, song
   const meter = () => meterById(state.meter);
+  const MAX_BARS = 4;
+  const beatsPerBar = () => meter().beats.length;
+  // Lengths are stored in bars, so changing the meter keeps each chord's share of the bar. After an
+  // edit, every length is set to exactly what is on screen, so the edit shows exactly as made.
+  function setLengths(beatsList) {
+    const n = beatsPerBar();
+    state.prog.forEach((inst, k) => { inst.len = beatsList[k] / n; });
+  }
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  function lenText(beats) {
+    const n = beatsPerBar(), bars = Math.floor(beats / n), rest = beats % n;
+    if (!bars) return plural(beats, 'beat');
+    return `${plural(beats, 'beat')}, ${plural(bars, 'bar')}${rest ? ` and ${plural(rest, 'beat')}` : ''}`;
+  }
 
   // ---------- Persistence (this page genuinely needs to remember the progression) ----------
   const STORE = 'chord-progression-lab-settings', OLD_STORE = 'progression-lab-v1';
@@ -34,7 +48,7 @@
     try {
       const s = {};
       SAVED.forEach(k => { s[k] = state[k]; });
-      s.prog = state.prog.map(({ id, ext, inv }) => [id, ext, inv]);
+      s.prog = state.prog.map(({ id, ext, inv, len }) => [id, ext, inv, len]);
       localStorage.setItem(STORE, JSON.stringify(s));
     } catch (e) { /* storage unavailable */ }
   }
@@ -56,7 +70,10 @@
       state.bassLevel = num(s.bassLevel, 0, 200, 100);
       state.bassOctave = !!s.bassOctave;
       state.circleClick = s.circleClick === 'play' ? 'play' : 'key';
-      if (Array.isArray(s.prog)) state.prog = toInsts(s.prog).filter(i => Theory.BY_ID[state.mode][i.id]).slice(0, 16).map(withUid);
+      if (Array.isArray(s.prog)) {
+        state.prog = toInsts(s.prog).filter(i => Theory.BY_ID[state.mode][i.id]).slice(0, 16)
+          .map(i => withUid({ ...i, len: Number.isFinite(i.len) && i.len > 0 ? Math.min(MAX_BARS, i.len) : 1 }));
+      }
     } catch (e) { /* ignore bad data */ }
   }
 
@@ -64,7 +81,19 @@
   function compute() {
     const key = Theory.makeKey(state.tonic, state.mode);
     const chords = state.prog.map(i => Theory.resolve(i, key));
-    D = { key, chords, voicings: Theory.voice(chords, state.voicing) };
+    const voicings = Theory.voice(chords, state.voicing);
+    const m = meter(), n = m.beats.length;
+    // Round the chord boundaries (in bars) to beats, not each length on its own, so the total is
+    // kept when the meter changes: two half-bar chords in 3/4 become 2 + 1 beats, not 2 + 2.
+    let acc = 0, b = 0;
+    const spans = state.prog.map(inst => {
+      acc += Math.min(MAX_BARS, inst.len || 1);
+      const end = Math.min(b + MAX_BARS * n, Math.max(b + 1, Math.round(acc * n)));
+      const s = { startBeat: b, beats: end - b, start: beatPulse(m, b), end: beatPulse(m, end) };
+      b = end;
+      return s;
+    });
+    D = { key, chords, voicings, spans, totalBeats: b, song: { voicings, spans, total: beatPulse(m, b) } };
   }
   const indexOf = uid => state.prog.findIndex(i => i.uid === uid);
   const focusIndex = () => {
@@ -82,7 +111,8 @@
 
   // Re-rendering replaces elements, so focus is carried across by each control's data-focus key.
   let pendingFocus = null;
-  function update() {
+  // keepInspector: redraw everything but the Chord panel, so its Length slider is not replaced mid-drag.
+  function update(opts = {}) {
     const active = document.activeElement;
     const fk = pendingFocus || (active && active.dataset ? active.dataset.focus : null);
     pendingFocus = null;
@@ -92,7 +122,7 @@
     renderBeats();
     renderTimeline();
     renderPalette();
-    renderInspector();
+    if (!opts.keepInspector) renderInspector();
     renderViews();
     renderTabs();
     if (fk) {
@@ -149,7 +179,7 @@
     state.preview = null;
     state.playing = true;
     Sound.start({
-      getBars: () => D.voicings,
+      getSong: () => D.song,
       tempo: () => state.tempo, meter, pattern: () => state.pattern, loop: () => state.loop,
       onChord: i => highlight(i),
       onPulse: k => lightPulse(k),
@@ -218,24 +248,63 @@
       const tag = c.def.tag || FUNC[c.func].name;
       return `<li class="slot fn-${c.color}${sel ? ' sel' : ''}${state.playing && i === state.current ? ' playing' : ''}" data-uid="${inst.uid}" draggable="true">
         <button type="button" class="slot-main" data-focus="slot-${inst.uid}" aria-pressed="${sel}">
-          <span class="slot-bar">Bar ${i + 1}</span>
+          <span class="slot-bar"><span class="visually-hidden">Chord </span>${i + 1}</span>
           <span class="slot-rn">${c.html}</span>
           <span class="slot-name">${esc(c.name)}</span>
+          <span class="slot-len">${plural(D.spans[i].beats, 'beat')}</span>
           <span class="slot-tag">${esc(tag)}</span>
           <span class="slot-t">Tension ${c.tension}</span>
           <span class="slot-meter" aria-hidden="true"><span style="width:${c.tension}%"></span></span>
         </button>
-        <button type="button" class="slot-x" data-del="${inst.uid}" aria-label="Remove bar ${i + 1}" title="Remove bar ${i + 1}">×</button>
+        <button type="button" class="slot-x" data-del="${inst.uid}" aria-label="Remove chord ${i + 1}" title="Remove chord ${i + 1}">×</button>
+        <span class="slot-grip" aria-hidden="true" title="Drag to change how long this chord plays"></span>
       </li>`;
     }).join('');
-    const addLabel = state.prog.length ? (state.prog.length >= 16 ? '16 bars is the limit' : 'Drop a chord here') : 'Add chords from below';
+    const addLabel = state.prog.length ? (state.prog.length >= 16 ? '16 chords is the limit' : 'Drop a chord here') : 'Add chords from below';
     $('#timeline').innerHTML = items + `<li class="slot add" data-add="1"><span aria-hidden="true">+</span>${addLabel}</li>`;
-    setText($('#count'), `${state.prog.length} bar${state.prog.length === 1 ? '' : 's'}`);
+    layoutTimeline(D.spans.map(s => s.beats));
+  }
+
+  // Place the chords on the time lane and draw the ruler. Called with trial lengths while dragging,
+  // so it only moves existing elements and never rebuilds them.
+  const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+  const beatPx = () => 2.75 * rootPx(); // rem-based, so presentation mode widens the lane too
+  const beatX = (b, px) => beatPulse(meter(), b) * px / meter().perBeat;
+  function layoutTimeline(beatsList) {
+    const px = beatPx(), rem = rootPx(), n = beatsPerBar(), gap = 4;
+    let b = 0;
+    $$('#timeline .slot[data-uid]').forEach((el, i) => {
+      const beats = beatsList[i], x0 = beatX(b, px), w = beatX(b + beats, px) - x0 - gap;
+      el.style.left = `${x0}px`;
+      el.style.width = `${w}px`;
+      el.classList.toggle('narrow', w < 6.2 * rem);
+      el.classList.toggle('tiny', w < 3.8 * rem);
+      setText(el.querySelector('.slot-len'), plural(beats, 'beat'));
+      b += beats;
+    });
+    const end = beatX(b, px);
+    const add = $('#timeline .slot.add');
+    add.style.left = `${end}px`;
+    const bars = Math.max(1, Math.ceil(b / n));
+    let ruler = '';
+    for (let k = 0; k < bars * n; k++) {
+      ruler += k % n === 0
+        ? `<span class="bar-mark" style="left:${beatX(k, px)}px">${k / n + 1}</span>`
+        : `<span class="beat-mark" style="left:${beatX(k, px)}px"></span>`;
+    }
+    ruler += `<span class="bar-mark" style="left:${beatX(bars * n, px)}px"></span>`;
+    $('#ruler').innerHTML = ruler;
+    $('#lane').style.width = `${Math.max(end + 7.5 * rem, beatX(bars * n, px) + 8)}px`;
+    const rest = b % n;
+    setText($('#count'), `${plural(state.prog.length, 'chord')}, ${rest ? plural(b, 'beat') : plural(b / n, 'bar')}`);
+    setText($('#laneNote'), b && rest
+      ? `The chords fill ${plural(Math.floor(b / n), 'bar')} and ${rest} of ${n} beats, so the last bar is played short when the progression loops.`
+      : '');
   }
 
   function addChord(id) {
     if (state.prog.length >= 16) return;
-    const inst = withUid({ id, ext: 'triad', inv: 0 });
+    const inst = withUid({ id, ext: 'triad', inv: 0, len: 1 });
     state.prog.push(inst);
     state.selected = inst.uid;
     compute();
@@ -280,7 +349,7 @@
     $('#palDiatonic').innerHTML = defs.filter(d => d.src === 'diatonic').map(chip).join('');
     $('#palExtra').innerHTML = defs.filter(d => d.src !== 'diatonic').map(chip).join('');
     setText($('#palHint'), ref
-      ? `Click a chord to add it to the end, or drag it onto a bar to replace that bar. "Often next" marks chords that commonly follow ${ref.text}.`
+      ? `Click a chord to add it to the end, or drag it onto a chord in the progression to replace it. "Often next" marks chords that commonly follow ${ref.text}.`
       : 'Click a chord to add it to the progression.');
   }
 
@@ -306,12 +375,14 @@
     const i = indexOf(state.selected);
     const all = [['triad', 'Triads'], ['seventh', 'Diatonic 7ths'], ['nine', 'Add 9ths'], ['sus', 'Sus4 on dominants']]
       .map(([k, label]) => `<button type="button" class="chip" data-all="${k}" data-focus="all-${k}">${label}</button>`).join('');
-    const applyAll = `<div class="insp-row"><span class="lbl" id="lbl-all">Every bar</span><div class="presets" role="group" aria-labelledby="lbl-all">${all}</div></div>`;
+    const applyAll = `<div class="insp-row"><span class="lbl" id="lbl-all">Every chord</span><div class="presets" role="group" aria-labelledby="lbl-all">${all}</div></div>`;
     if (i < 0) {
-      $('#inspector').innerHTML = `<p class="insp-empty">Select a bar in your progression to change its chord, color and inversion.</p>${applyAll}`;
+      $('#inspector').innerHTML = `<p class="insp-empty">Select a chord in your progression to change its length, color and inversion.</p>${applyAll}`;
       return;
     }
-    const c = D.chords[i], inst = state.prog[i];
+    const c = D.chords[i], inst = state.prog[i], sp = D.spans[i];
+    const n = beatsPerBar();
+    const at = `bar ${Math.floor(sp.startBeat / n) + 1}, beat ${(sp.startBeat % n) + 1}`;
     const exts = Theory.extOptions(c.def).map(e => {
       const label = c.tones[0].name + Theory.suffix(c.def, e);
       return `<button type="button" class="chip mono" data-ext="${e}" data-focus="ext-${e}" aria-pressed="${c.ext === e}">${esc(label)}</button>`;
@@ -328,7 +399,7 @@
       <div class="insp-head fn-${c.color}">
         <div class="insp-rn">${c.html}</div>
         <div class="insp-meta">
-          <div class="insp-name">${esc(c.name)} <span class="insp-bar">bar ${i + 1}</span></div>
+          <div class="insp-name">${esc(c.name)} <span class="insp-bar">chord ${i + 1}, starts ${at}</span></div>
           <div class="insp-tags"><span class="fn-pill"><span class="akey" aria-hidden="true"></span>${FUNC[c.func].name}</span>
             ${c.def.tag ? `<span>${esc(cap(c.def.tag))}</span>` : ''}<span>Tension ${c.tension}</span></div>
         </div>
@@ -336,12 +407,16 @@
       <p class="insp-say">${esc(describe(c, D.key))}</p>
       <ul class="insp-notes" aria-label="Chord tones">${c.tones.map(t => `<li><small>${ROLE[t.role]}</small>${esc(t.name)}</li>`).join('')}</ul>
       <div class="insp-row"><label class="lbl" for="inspChord">Chord</label><div><select id="inspChord" data-focus="inspChord">${options}</select></div></div>
+      <div class="insp-row"><label class="lbl" for="inspLen">Length</label><div class="control">
+        <div class="control-head"><span class="control-sub">1 beat to ${MAX_BARS} bars of ${esc(meter().id)}</span><output id="inspLenOut" for="inspLen">${lenText(sp.beats)}</output></div>
+        <input type="range" id="inspLen" data-focus="inspLen" min="1" max="${MAX_BARS * n}" step="1" value="${sp.beats}" aria-describedby="inspLen-sub">
+        <p class="control-sub" id="inspLen-sub">Snaps to each beat. Dragging the chord's right edge does the same.</p></div></div>
       <div class="insp-row"><span class="lbl" id="lbl-color">Color</span><div class="presets" role="group" aria-labelledby="lbl-color">${exts}</div></div>
       <div class="insp-row"><span class="lbl" id="lbl-inv">Inversion</span><div class="presets" role="group" aria-labelledby="lbl-inv">${invs}</div></div>
-      <div class="insp-row"><span class="lbl" id="lbl-bar">Bar</span><div class="presets" role="group" aria-labelledby="lbl-bar">
-        <button type="button" class="chip" data-act="left" data-focus="act-left" ${i === 0 ? 'disabled title="Already the first bar"' : ''}>Move left</button>
-        <button type="button" class="chip" data-act="right" data-focus="act-right" ${i === state.prog.length - 1 ? 'disabled title="Already the last bar"' : ''}>Move right</button>
-        <button type="button" class="chip" data-act="dup" data-focus="act-dup" ${state.prog.length >= 16 ? 'disabled title="16 bars is the limit"' : ''}>Duplicate</button>
+      <div class="insp-row"><span class="lbl" id="lbl-bar">Arrange</span><div class="presets" role="group" aria-labelledby="lbl-bar">
+        <button type="button" class="chip" data-act="left" data-focus="act-left" ${i === 0 ? 'disabled title="Already the first chord"' : ''}>Move left</button>
+        <button type="button" class="chip" data-act="right" data-focus="act-right" ${i === state.prog.length - 1 ? 'disabled title="Already the last chord"' : ''}>Move right</button>
+        <button type="button" class="chip" data-act="dup" data-focus="act-dup" ${state.prog.length >= 16 ? 'disabled title="16 chords is the limit"' : ''}>Duplicate</button>
         <button type="button" class="chip" data-act="del" data-focus="act-del">Remove</button></div></div>
       ${applyAll}`;
   }
@@ -368,7 +443,7 @@
     const c = D.chords[i], v = D.voicings[i];
     piano.show([{ midi: v.bass, role: 'bass', name: toneName(c, v.bass), color: c.color },
       ...v.upper.map(m => ({ midi: m, role: 'upper', name: toneName(c, m), color: c.color }))]);
-    setText($('#pianoNow'), `${state.playing ? 'Playing bar' : 'Bar'} ${i + 1}: ${c.name}, bass ${sciName(toneName(c, v.bass), v.bass)}`);
+    setText($('#pianoNow'), `${state.playing ? 'Playing chord' : 'Chord'} ${i + 1}: ${c.name}, bass ${sciName(toneName(c, v.bass), v.bass)}`);
   }
 
   function renderCircle() {
@@ -417,7 +492,10 @@
         move = pairs.reduce((s, [a, b]) => s + Math.abs(a - b), 0);
         held = pairs.filter(([a, b]) => a === b).length;
       }
-      return `<tr><td>${i + 1}</td><td>${esc(c.text)}, ${esc(c.name)}</td><td class="notes-cell">${nm(v.bass)}</td>
+      const sp = D.spans[i], n = beatsPerBar();
+      return `<tr><td>${i + 1}</td><td>${esc(c.text)}, ${esc(c.name)}</td>
+        <td>Bar ${Math.floor(sp.startBeat / n) + 1}, beat ${(sp.startBeat % n) + 1}</td><td class="num">${sp.beats}</td><td class="num">${c.tension}</td>
+        <td class="notes-cell">${nm(v.bass)}</td>
         <td class="notes-cell">${v.upper.map(nm).join(', ')}</td><td class="num">${move}</td><td class="num">${held}</td></tr>`;
     }).join('');
     if (D.chords.length < 2) { $('#vlStats').innerHTML = '<p class="stat-row">Add at least two chords to see how the voices move.</p>'; return; }
@@ -436,7 +514,7 @@
     const cur = state.playing ? state.current : indexOf(state.selected);
     Views.tension($('#tension'), { chords: D.chords, current: cur });
     const c = D.chords[cur];
-    setText($('#tensionNow'), c ? `${state.playing ? 'Playing bar' : 'Bar'} ${cur + 1}, ${c.text}: tension ${c.tension}` : '');
+    setText($('#tensionNow'), c ? `${state.playing ? 'Playing chord' : 'Chord'} ${cur + 1}, ${c.text}: tension ${c.tension}` : '');
   }
 
   // ---------- Library and cadences ----------
@@ -467,8 +545,10 @@
     const it = itemFor(ref);
     const key = Theory.makeKey(state.tonic, it.mode);
     const v = Theory.voice(toInsts(it.prog).map(i => Theory.resolve(i, key)), state.voicing);
+    const bar = barPulses(meter()); // previews play one bar per chord in the current meter
+    const song = { voicings: v, spans: v.map((_, k) => ({ start: k * bar, end: (k + 1) * bar })), total: v.length * bar };
     Sound.start({
-      getBars: () => v, tempo: () => state.tempo, meter, pattern: () => state.pattern, loop: false,
+      getSong: () => song, tempo: () => state.tempo, meter, pattern: () => state.pattern, loop: false,
       onEnd: () => { state.preview = null; update(); },
     });
     state.preview = ref;
@@ -477,7 +557,7 @@
   function load(insts, mode, tonic) {
     state.mode = mode;
     if (tonic != null) state.tonic = tonic;
-    state.prog = insts.map(i => withUid({ id: i.id, ext: i.ext || 'triad', inv: i.inv || 0 }));
+    state.prog = insts.map(i => withUid({ id: i.id, ext: i.ext || 'triad', inv: i.inv || 0, len: i.len || 1 }));
     state.selected = state.prog[0].uid;
     pendingFocus = `slot-${state.selected}`;
     update();
@@ -490,7 +570,7 @@
       const seq = [pick(['d0', 'd0', 'd0', 'd5'])];
       while (seq.length < 4) seq.push(pick(defs[seq[seq.length - 1]].next));
       if (defs[seq[3]].next.includes(seq[0]) && new Set(seq).size >= 3) {
-        state.prog = seq.map(id => withUid({ id, ext: 'triad', inv: 0 }));
+        state.prog = seq.map(id => withUid({ id, ext: 'triad', inv: 0, len: 1 }));
         state.selected = state.prog[0].uid;
         update();
         return;
@@ -552,7 +632,45 @@
       if (slot && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); removeChord(+slot.closest('.slot').dataset.uid); }
     });
 
-    // Drag and drop is optional: the palette adds with a click and the Chord panel moves and replaces bars.
+    // Resize: drag a chord's right edge; the end snaps to the nearest beat. The Chord panel's Length
+    // slider is the keyboard route, and the change applies on release, so a cancelled drag undoes itself.
+    tl.addEventListener('pointerdown', e => {
+      const grip = e.target.closest('.slot-grip');
+      if (!grip || e.button > 0) return;
+      const slot = grip.closest('.slot'), uid = +slot.dataset.uid, i = indexOf(uid);
+      if (i < 0) return;
+      e.preventDefault();
+      const trial = D.spans.map(s => s.beats), orig = trial[i], startBeat = D.spans[i].startBeat;
+      const px = beatPx(), max = MAX_BARS * beatsPerBar();
+      slot.draggable = false; // keep the browser's reorder drag from starting
+      slot.classList.add('resizing');
+      try { grip.setPointerCapture(e.pointerId); } catch (err) { /* capture refused: the window listeners below still see the drag */ }
+      const move = ev => {
+        const x = ev.clientX - $('#lane').getBoundingClientRect().left;
+        let best = 1, bestD = Infinity;
+        for (let k = 1; k <= max; k++) {
+          const d = Math.abs(beatX(startBeat + k, px) - x);
+          if (d < bestD) { bestD = d; best = k; }
+        }
+        if (best !== trial[i]) { trial[i] = best; layoutTimeline(trial); }
+      };
+      const done = ev => {
+        window.removeEventListener('pointermove', move);
+        window.removeEventListener('pointerup', done);
+        window.removeEventListener('pointercancel', done);
+        slot.draggable = true;
+        slot.classList.remove('resizing');
+        if (ev.type === 'pointercancel') { layoutTimeline(D.spans.map(s => s.beats)); return; }
+        state.selected = uid;
+        if (trial[i] !== orig) setLengths(trial);
+        update();
+      };
+      window.addEventListener('pointermove', move);
+      window.addEventListener('pointerup', done);
+      window.addEventListener('pointercancel', done);
+    });
+
+    // Drag and drop is optional: the palette adds with a click and the Chord panel moves and replaces chords.
     document.addEventListener('dragstart', e => {
       const chip = e.target.closest && e.target.closest('.pal-chord'), slot = e.target.closest && e.target.closest('.slot[data-uid]');
       if (chip) e.dataTransfer.setData('text/plain', JSON.stringify({ id: chip.dataset.id }));
@@ -577,7 +695,7 @@
       const target = t.dataset.uid ? indexOf(+t.dataset.uid) : state.prog.length;
       if (data.id) {
         if (t.dataset.uid) state.prog[target] = { ...state.prog[target], id: data.id, ext: 'triad', inv: 0 };
-        else if (state.prog.length < 16) state.prog.push(withUid({ id: data.id, ext: 'triad', inv: 0 }));
+        else if (state.prog.length < 16) state.prog.push(withUid({ id: data.id, ext: 'triad', inv: 0, len: 1 }));
         update();
       } else if (data.uid) {
         const from = indexOf(data.uid);
@@ -605,6 +723,16 @@
       else if (b.dataset.act === 'del') { removeChord(inst.uid); return; }
       update();
       if ((b.dataset.ext || b.dataset.inv) && !state.playing) Sound.playChord(D.voicings[i]);
+    });
+    // Length slider: applies on every step (arrow keys included) without rebuilding the slider itself.
+    $('#inspector').addEventListener('input', e => {
+      if (e.target.id !== 'inspLen') return;
+      const i = indexOf(state.selected);
+      if (i < 0) return;
+      const beats = +e.target.value;
+      setLengths(D.spans.map((s, k) => (k === i ? beats : s.beats)));
+      setText($('#inspLenOut'), lenText(beats));
+      update({ keepInspector: true });
     });
     $('#inspector').addEventListener('change', e => {
       if (e.target.id !== 'inspChord') return;
@@ -657,6 +785,7 @@
   const tabs = Chrome.tabs($('.tablist'), panelId => { state.tab = panelId.replace('tab-', ''); save(); });
   tabs.select('tab-' + state.tab);
   Quiz.init($('#tab-quiz'), { key: () => D.key, stopMain, load });
-  Chrome.init({ refresh: renderViews });
+  // Theme and presentation changes re-measure drawings; the lane's beat width follows the root size.
+  Chrome.init({ refresh: () => { renderViews(); layoutTimeline(D.spans.map(s => s.beats)); } });
   window.app = { state, derived: () => D };
 })();
