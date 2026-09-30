@@ -238,17 +238,21 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 .slot-grip { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; cursor: ew-resize; touch-action: none;
   display: grid; place-items: center; border-radius: 0 10px 10px 0; }
 .slot-grip::before { content: ''; width: 3px; height: 2.4rem; border-left: 2px solid var(--text-muted); border-right: 2px solid var(--text-muted); }
-.slot-grip:hover::before, .slot.resizing .slot-grip::before { border-color: var(--text-primary); }
+.slot-grip.left { left: 0; right: auto; border-radius: 10px 0 0 10px; }
+.slot-grip:hover::before, .slot.resizing .slot-grip.active::before { border-color: var(--text-primary); }
+.slot.tiny .slot-grip { width: 10px; }
 .slot.resizing { outline: 2px dashed var(--accent); outline-offset: 2px; z-index: 3; }
 .slot-len { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 /* Short chords keep their details for screen readers; the Chord panel and table show them on screen. */
 .slot.narrow .slot-tag, .slot.narrow .slot-t, .slot.tiny .slot-name, .slot.tiny .slot-len, .slot.tiny .slot-bar {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .slot.tiny .slot-x { display: none; }
-.slot.tiny .slot-rn { font-size: 1.1rem; white-space: normal; overflow-wrap: anywhere; }
-.slot.tiny .slot-main { padding-left: 6px; padding-right: 14px; }
+/* A one-beat block is about 40 px wide: the numeral may wrap onto a second line rather than spill out. */
+.slot.tiny .slot-rn { font-size: 1rem; line-height: 1.15; }
+.slot.tiny .slot-rn .rn { white-space: normal; overflow-wrap: anywhere; }
+.slot.tiny .slot-main { padding-left: 6px; padding-right: 6px; }
 .slot::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; border-radius: 10px 10px 0 0; background: var(--fn); }
-.slot-main { display: grid; align-content: start; gap: 3px; width: 100%; height: 100%; padding: 14px 16px 12px 10px; border: 0;
+.slot-main { display: grid; align-content: start; gap: 3px; width: 100%; height: 100%; padding: 14px 16px 12px 16px; border: 0;
   background: transparent; text-align: left; border-radius: 10px; color: var(--text-primary); }
 .slot-bar { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
 .slot-rn { font-size: 2.2rem; line-height: 1.05; min-height: 2.4rem; }

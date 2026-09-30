@@ -34,6 +34,13 @@
     const n = beatsPerBar();
     state.prog.forEach((inst, k) => { inst.len = beatsList[k] / n; });
   }
+  // Where chord i may start when its left edge moves: at least one beat for it and for the chord
+  // before it, and neither longer than MAX_BARS.
+  function startBounds(i) {
+    const prev = D.spans[i - 1], sp = D.spans[i], end = sp.startBeat + sp.beats, max = MAX_BARS * beatsPerBar();
+    return { lo: Math.max(prev.startBeat + 1, end - max), hi: Math.min(end - 1, prev.startBeat + max) };
+  }
+  const posText = b => `bar ${Math.floor(b / beatsPerBar()) + 1}, beat ${(b % beatsPerBar()) + 1}`;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   function lenText(beats) {
     const n = beatsPerBar(), bars = Math.floor(beats / n), rest = beats % n;
@@ -257,6 +264,7 @@
           <span class="slot-meter" aria-hidden="true"><span style="width:${c.tension}%"></span></span>
         </button>
         <button type="button" class="slot-x" data-del="${inst.uid}" aria-label="Remove chord ${i + 1}" title="Remove chord ${i + 1}">×</button>
+        ${i > 0 ? '<span class="slot-grip left" aria-hidden="true" title="Drag to move where this chord starts"></span>' : ''}
         <span class="slot-grip" aria-hidden="true" title="Drag to change how long this chord plays"></span>
       </li>`;
     }).join('');
@@ -382,7 +390,7 @@
     }
     const c = D.chords[i], inst = state.prog[i], sp = D.spans[i];
     const n = beatsPerBar();
-    const at = `bar ${Math.floor(sp.startBeat / n) + 1}, beat ${(sp.startBeat % n) + 1}`;
+    const at = posText(sp.startBeat);
     const exts = Theory.extOptions(c.def).map(e => {
       const label = c.tones[0].name + Theory.suffix(c.def, e);
       return `<button type="button" class="chip mono" data-ext="${e}" data-focus="ext-${e}" aria-pressed="${c.ext === e}">${esc(label)}</button>`;
@@ -408,9 +416,10 @@
       <ul class="insp-notes" aria-label="Chord tones">${c.tones.map(t => `<li><small>${ROLE[t.role]}</small>${esc(t.name)}</li>`).join('')}</ul>
       <div class="insp-row"><label class="lbl" for="inspChord">Chord</label><div><select id="inspChord" data-focus="inspChord">${options}</select></div></div>
       <div class="insp-row"><label class="lbl" for="inspLen">Length</label><div class="control">
-        <div class="control-head"><span class="control-sub">1 beat to ${MAX_BARS} bars of ${esc(meter().id)}</span><output id="inspLenOut" for="inspLen">${lenText(sp.beats)}</output></div>
-        <input type="range" id="inspLen" data-focus="inspLen" min="1" max="${MAX_BARS * n}" step="1" value="${sp.beats}" aria-describedby="inspLen-sub">
-        <p class="control-sub" id="inspLen-sub">Snaps to each beat. Dragging the chord's right edge does the same.</p></div></div>
+        <div class="control-head"><span class="control-sub">1 beat to ${MAX_BARS} bars of ${esc(meter().id)}</span><output id="inspLenOut" for="inspLen" aria-live="off">${lenText(sp.beats)}</output></div>
+        <input type="range" id="inspLen" data-focus="inspLen" min="1" max="${MAX_BARS * n}" step="1" value="${sp.beats}" aria-valuetext="${lenText(sp.beats)}" aria-describedby="inspLen-sub">
+        <p class="control-sub" id="inspLen-sub">Snaps to each beat; the chords after this one move along. Dragging the chord's right edge does the same.</p></div></div>
+      ${startRow(i, sp)}
       <div class="insp-row"><span class="lbl" id="lbl-color">Color</span><div class="presets" role="group" aria-labelledby="lbl-color">${exts}</div></div>
       <div class="insp-row"><span class="lbl" id="lbl-inv">Inversion</span><div class="presets" role="group" aria-labelledby="lbl-inv">${invs}</div></div>
       <div class="insp-row"><span class="lbl" id="lbl-bar">Arrange</span><div class="presets" role="group" aria-labelledby="lbl-bar">
@@ -419,6 +428,31 @@
         <button type="button" class="chip" data-act="dup" data-focus="act-dup" ${state.prog.length >= 16 ? 'disabled title="16 chords is the limit"' : ''}>Duplicate</button>
         <button type="button" class="chip" data-act="del" data-focus="act-del">Remove</button></div></div>
       ${applyAll}`;
+  }
+
+  // The readouts beside Length and Starts are not live: moving one slider changes both, so the moved
+  // slider's aria-valuetext announces the change once instead.
+  function startRow(i, sp) {
+    if (i === 0) return '<div class="insp-row"><span class="lbl">Starts</span><p class="control-sub">Bar 1, beat 1. The first chord always starts the progression.</p></div>';
+    const { lo, hi } = startBounds(i);
+    return `<div class="insp-row"><label class="lbl" for="inspStart">Starts</label><div class="control">
+        <div class="control-head"><span class="control-sub">Moves the change from chord ${i}</span><output id="inspStartOut" for="inspStart" aria-live="off">${posText(sp.startBeat)}</output></div>
+        <input type="range" id="inspStart" data-focus="inspStart" min="${lo}" max="${hi}" step="1" value="${sp.startBeat}" aria-valuetext="${posText(sp.startBeat)}" aria-describedby="inspStart-sub">
+        <p class="control-sub" id="inspStart-sub">Snaps to each beat. This chord's end stays put and chord ${i} gets longer or shorter. Dragging the chord's left edge does the same.</p></div></div>`;
+  }
+  // After a slider moves, bring the other slider, both readouts and the heading in line without rebuilding them.
+  function syncLengthControls(i) {
+    const sp = D.spans[i];
+    const len = $('#inspLen');
+    if (len) { len.value = sp.beats; len.setAttribute('aria-valuetext', lenText(sp.beats)); setText($('#inspLenOut'), lenText(sp.beats)); }
+    const st = $('#inspStart');
+    if (st) {
+      const { lo, hi } = startBounds(i);
+      st.min = lo; st.max = hi; st.value = sp.startBeat;
+      st.setAttribute('aria-valuetext', posText(sp.startBeat));
+      setText($('#inspStartOut'), posText(sp.startBeat));
+    }
+    setText($('.insp-bar'), `chord ${i + 1}, starts ${posText(sp.startBeat)}`);
   }
 
   function applyAll(kind) {
@@ -632,27 +666,41 @@
       if (slot && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); removeChord(+slot.closest('.slot').dataset.uid); }
     });
 
-    // Resize: drag a chord's right edge; the end snaps to the nearest beat. The Chord panel's Length
-    // slider is the keyboard route, and the change applies on release, so a cancelled drag undoes itself.
+    // Resize by either edge; edges snap to the nearest beat. The right edge changes the chord's length
+    // and moves the chords after it. The left edge moves the change from the chord before: this
+    // chord's end stays put and the chord before takes up the difference. The Chord panel's Length
+    // and Starts sliders are the keyboard routes. Changes apply on release, so a cancelled drag undoes itself.
     tl.addEventListener('pointerdown', e => {
       const grip = e.target.closest('.slot-grip');
       if (!grip || e.button > 0) return;
       const slot = grip.closest('.slot'), uid = +slot.dataset.uid, i = indexOf(uid);
-      if (i < 0) return;
+      const fromLeft = grip.classList.contains('left');
+      if (i < 0 || (fromLeft && i === 0)) return;
       e.preventDefault();
-      const trial = D.spans.map(s => s.beats), orig = trial[i], startBeat = D.spans[i].startBeat;
+      const trial = D.spans.map(s => s.beats), orig = trial.slice(), startBeat = D.spans[i].startBeat;
       const px = beatPx(), max = MAX_BARS * beatsPerBar();
+      const nearest = (lo, hi, x, at) => {
+        let best = lo, bestD = Infinity;
+        for (let k = lo; k <= hi; k++) {
+          const d = Math.abs(beatX(at(k), px) - x);
+          if (d < bestD) { bestD = d; best = k; }
+        }
+        return best;
+      };
       slot.draggable = false; // keep the browser's reorder drag from starting
       slot.classList.add('resizing');
+      grip.classList.add('active');
       try { grip.setPointerCapture(e.pointerId); } catch (err) { /* capture refused: the window listeners below still see the drag */ }
       const move = ev => {
         const x = ev.clientX - $('#lane').getBoundingClientRect().left;
-        let best = 1, bestD = Infinity;
-        for (let k = 1; k <= max; k++) {
-          const d = Math.abs(beatX(startBeat + k, px) - x);
-          if (d < bestD) { bestD = d; best = k; }
+        if (fromLeft) {
+          const { lo, hi } = startBounds(i), prevStart = D.spans[i - 1].startBeat, end = startBeat + orig[i];
+          const b = nearest(lo, hi, x, k => k);
+          if (b - prevStart !== trial[i - 1]) { trial[i - 1] = b - prevStart; trial[i] = end - b; layoutTimeline(trial); }
+        } else {
+          const k = nearest(1, max, x, n => startBeat + n);
+          if (k !== trial[i]) { trial[i] = k; layoutTimeline(trial); }
         }
-        if (best !== trial[i]) { trial[i] = best; layoutTimeline(trial); }
       };
       const done = ev => {
         window.removeEventListener('pointermove', move);
@@ -660,9 +708,10 @@
         window.removeEventListener('pointercancel', done);
         slot.draggable = true;
         slot.classList.remove('resizing');
+        grip.classList.remove('active');
         if (ev.type === 'pointercancel') { layoutTimeline(D.spans.map(s => s.beats)); return; }
         state.selected = uid;
-        if (trial[i] !== orig) setLengths(trial);
+        if (trial.some((v, k) => v !== orig[k])) setLengths(trial);
         update();
       };
       window.addEventListener('pointermove', move);
@@ -725,14 +774,22 @@
       if ((b.dataset.ext || b.dataset.inv) && !state.playing) Sound.playChord(D.voicings[i]);
     });
     // Length slider: applies on every step (arrow keys included) without rebuilding the slider itself.
+    // Starts: moves the change from the chord before, keeping this chord's end where it is.
     $('#inspector').addEventListener('input', e => {
-      if (e.target.id !== 'inspLen') return;
+      const id = e.target.id;
+      if (id !== 'inspLen' && id !== 'inspStart') return;
       const i = indexOf(state.selected);
       if (i < 0) return;
-      const beats = +e.target.value;
-      setLengths(D.spans.map((s, k) => (k === i ? beats : s.beats)));
-      setText($('#inspLenOut'), lenText(beats));
+      const list = D.spans.map(s => s.beats), v = +e.target.value;
+      if (id === 'inspLen') list[i] = v;
+      else {
+        const end = D.spans[i].startBeat + D.spans[i].beats;
+        list[i - 1] = v - D.spans[i - 1].startBeat;
+        list[i] = end - v;
+      }
+      setLengths(list);
       update({ keepInspector: true });
+      syncLengthControls(i);
     });
     $('#inspector').addEventListener('change', e => {
       if (e.target.id !== 'inspChord') return;
