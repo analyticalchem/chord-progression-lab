@@ -34,12 +34,6 @@
     const n = beatsPerBar();
     state.prog.forEach((inst, k) => { inst.len = beatsList[k] / n; });
   }
-  // Where chord i may start when its left edge moves: at least one beat for it and for the chord
-  // before it, and neither longer than MAX_BARS.
-  function startBounds(i) {
-    const prev = D.spans[i - 1], sp = D.spans[i], end = sp.startBeat + sp.beats, max = MAX_BARS * beatsPerBar();
-    return { lo: Math.max(prev.startBeat + 1, end - max), hi: Math.min(end - 1, prev.startBeat + max) };
-  }
   const posText = b => `bar ${Math.floor(b / beatsPerBar()) + 1}, beat ${(b % beatsPerBar()) + 1}`;
   const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   function lenText(beats) {
@@ -132,6 +126,7 @@
     if (!opts.keepInspector) renderInspector();
     renderViews();
     renderTabs();
+    fitAll();
     if (fk) {
       const el = document.querySelector(`[data-focus="${fk}"]`);
       if (el && el !== document.activeElement) el.focus({ preventScroll: true });
@@ -142,6 +137,23 @@
     renderCircle();
     renderVoiceLeading();
     renderTension();
+  }
+  // Drawings hold their text and marks at CSS size however wide they are drawn (style guide 8.7).
+  // Redraw the ones whose marks are sized in script when their scale changes, and name each scroll
+  // box as a region only while it scrolls. Runs after every redraw, on resize and on the
+  // presentation toggle (a hidden page runs no observer callbacks, so it is also called directly).
+  function fitAll() {
+    if (Views.fitSvg($('#circle'))) renderCircle();
+    if (Views.fitSvg($('#tension'))) renderTension();
+    $$('.visual-scroll').forEach(box => Views.fitScroll(box, box.dataset.scrollLabel));
+  }
+  // Coalesce resize bursts with a short timer rather than requestAnimationFrame, which never runs in
+  // a background tab and would leave the scroll boxes unchecked after a resize there.
+  let fitQueued = false;
+  function queueFit() {
+    if (fitQueued) return;
+    fitQueued = true;
+    setTimeout(() => { fitQueued = false; fitAll(); }, 30);
   }
 
   // ---------- Transport ----------
@@ -264,7 +276,7 @@
           <span class="slot-meter" aria-hidden="true"><span style="width:${c.tension}%"></span></span>
         </button>
         <button type="button" class="slot-x" data-del="${inst.uid}" aria-label="Remove chord ${i + 1}" title="Remove chord ${i + 1}">×</button>
-        ${i > 0 ? '<span class="slot-grip left" aria-hidden="true" title="Drag to move where this chord starts"></span>' : ''}
+        <span class="slot-grip left" aria-hidden="true" title="Drag to change how long this chord plays"></span>
         <span class="slot-grip" aria-hidden="true" title="Drag to change how long this chord plays"></span>
       </li>`;
     }).join('');
@@ -416,10 +428,9 @@
       <ul class="insp-notes" aria-label="Chord tones">${c.tones.map(t => `<li><small>${ROLE[t.role]}</small>${esc(t.name)}</li>`).join('')}</ul>
       <div class="insp-row"><label class="lbl" for="inspChord">Chord</label><div><select id="inspChord" data-focus="inspChord">${options}</select></div></div>
       <div class="insp-row"><label class="lbl" for="inspLen">Length</label><div class="control">
-        <div class="control-head"><span class="control-sub">1 beat to ${MAX_BARS} bars of ${esc(meter().id)}</span><output id="inspLenOut" for="inspLen" aria-live="off">${lenText(sp.beats)}</output></div>
-        <input type="range" id="inspLen" data-focus="inspLen" min="1" max="${MAX_BARS * n}" step="1" value="${sp.beats}" aria-valuetext="${lenText(sp.beats)}" aria-describedby="inspLen-sub">
-        <p class="control-sub" id="inspLen-sub">Snaps to each beat; the chords after this one move along. Dragging the chord's right edge does the same.</p></div></div>
-      ${startRow(i, sp)}
+        <div class="control-head"><span class="control-sub">1 beat to ${MAX_BARS} bars of ${esc(meter().id)}</span><output id="inspLenOut" for="inspLen">${lenText(sp.beats)}</output></div>
+        <input type="range" id="inspLen" data-focus="inspLen" min="1" max="${MAX_BARS * n}" step="1" value="${sp.beats}" aria-describedby="inspLen-sub">
+        <p class="control-sub" id="inspLen-sub">Snaps to each beat. The chords after this one move to make room; the ones before it stay put. Dragging either edge of the chord does the same.</p></div></div>
       <div class="insp-row"><span class="lbl" id="lbl-color">Color</span><div class="presets" role="group" aria-labelledby="lbl-color">${exts}</div></div>
       <div class="insp-row"><span class="lbl" id="lbl-inv">Inversion</span><div class="presets" role="group" aria-labelledby="lbl-inv">${invs}</div></div>
       <div class="insp-row"><span class="lbl" id="lbl-bar">Arrange</span><div class="presets" role="group" aria-labelledby="lbl-bar">
@@ -428,31 +439,6 @@
         <button type="button" class="chip" data-act="dup" data-focus="act-dup" ${state.prog.length >= 16 ? 'disabled title="16 chords is the limit"' : ''}>Duplicate</button>
         <button type="button" class="chip" data-act="del" data-focus="act-del">Remove</button></div></div>
       ${applyAll}`;
-  }
-
-  // The readouts beside Length and Starts are not live: moving one slider changes both, so the moved
-  // slider's aria-valuetext announces the change once instead.
-  function startRow(i, sp) {
-    if (i === 0) return '<div class="insp-row"><span class="lbl">Starts</span><p class="control-sub">Bar 1, beat 1. The first chord always starts the progression.</p></div>';
-    const { lo, hi } = startBounds(i);
-    return `<div class="insp-row"><label class="lbl" for="inspStart">Starts</label><div class="control">
-        <div class="control-head"><span class="control-sub">Moves the change from chord ${i}</span><output id="inspStartOut" for="inspStart" aria-live="off">${posText(sp.startBeat)}</output></div>
-        <input type="range" id="inspStart" data-focus="inspStart" min="${lo}" max="${hi}" step="1" value="${sp.startBeat}" aria-valuetext="${posText(sp.startBeat)}" aria-describedby="inspStart-sub">
-        <p class="control-sub" id="inspStart-sub">Snaps to each beat. This chord's end stays put and chord ${i} gets longer or shorter. Dragging the chord's left edge does the same.</p></div></div>`;
-  }
-  // After a slider moves, bring the other slider, both readouts and the heading in line without rebuilding them.
-  function syncLengthControls(i) {
-    const sp = D.spans[i];
-    const len = $('#inspLen');
-    if (len) { len.value = sp.beats; len.setAttribute('aria-valuetext', lenText(sp.beats)); setText($('#inspLenOut'), lenText(sp.beats)); }
-    const st = $('#inspStart');
-    if (st) {
-      const { lo, hi } = startBounds(i);
-      st.min = lo; st.max = hi; st.value = sp.startBeat;
-      st.setAttribute('aria-valuetext', posText(sp.startBeat));
-      setText($('#inspStartOut'), posText(sp.startBeat));
-    }
-    setText($('.insp-bar'), `chord ${i + 1}, starts ${posText(sp.startBeat)}`);
   }
 
   function applyAll(kind) {
@@ -503,16 +489,18 @@
 
   // A wedge click always sounds that wedge's triad; in "key" mode it also moves the key there.
   function pickCircle(pc, mode, viaKeyboard) {
-    const chord = Theory.resolve({ id: 'd0' }, Theory.makeKey(pc, mode));
+    const key = Theory.makeKey(pc, mode);
+    const chord = Theory.resolve({ id: 'd0' }, key);
     Sound.playChord(Theory.voice([chord], 'smooth')[0]);
     if (state.circleClick === 'key') setKey(pc, mode);
+    // The visible (and announced) equivalent of the sound: which chord played, and its notes.
+    const played = `Played ${key.name} ${mode}: ${chord.tones.map(t => t.name).join(', ')}${state.circleClick === 'key' ? '. The key is now ' + key.name + ' ' + mode + '.' : '.'}`;
+    const out = $('#cofPlayed');
+    if (out.textContent === played) out.textContent = ''; // a repeat click is announced again
+    setText(out, played);
+    // Keep keyboard users on the wedge after the circle redraws; mouse clicks leave focus alone.
     const seg = $(`#circle .cof-seg[data-pc="${pc}"][data-mode="${mode}"]`);
-    if (seg) {
-      seg.classList.add('flash');
-      setTimeout(() => seg.classList.remove('flash'), 350);
-      // Keep keyboard users on the wedge after the circle redraws; mouse clicks leave focus alone.
-      if (viaKeyboard) seg.focus({ preventScroll: true });
-    }
+    if (seg && viaKeyboard) seg.focus({ preventScroll: true });
   }
 
   function renderVoiceLeading() {
@@ -528,6 +516,7 @@
       }
       const sp = D.spans[i], n = beatsPerBar();
       return `<tr><td>${i + 1}</td><td>${esc(c.text)}, ${esc(c.name)}</td>
+        <td>${FUNC[c.func].name}${c.def.tag ? `, ${esc(c.def.tag)}` : ''}</td>
         <td>Bar ${Math.floor(sp.startBeat / n) + 1}, beat ${(sp.startBeat % n) + 1}</td><td class="num">${sp.beats}</td><td class="num">${c.tension}</td>
         <td class="notes-cell">${nm(v.bass)}</td>
         <td class="notes-cell">${v.upper.map(nm).join(', ')}</td><td class="num">${move}</td><td class="num">${held}</td></tr>`;
@@ -666,23 +655,28 @@
       if (slot && (e.key === 'Delete' || e.key === 'Backspace')) { e.preventDefault(); removeChord(+slot.closest('.slot').dataset.uid); }
     });
 
-    // Resize by either edge; edges snap to the nearest beat. The right edge changes the chord's length
-    // and moves the chords after it. The left edge moves the change from the chord before: this
-    // chord's end stays put and the chord before takes up the difference. The Chord panel's Length
-    // and Starts sliders are the keyboard routes. Changes apply on release, so a cancelled drag undoes itself.
+    // Resize by either edge. Only the dragged chord changes length (snapped to whole beats); every
+    // chord after it shifts to make room, and the chord before never changes. Its start stays put,
+    // so pulling the left edge left adds that much length and pushing it right removes it, just as
+    // the right edge does in the other direction. The Chord panel's Length slider is the keyboard
+    // route. Changes apply on release, so a cancelled drag undoes itself.
     tl.addEventListener('pointerdown', e => {
       const grip = e.target.closest('.slot-grip');
       if (!grip || e.button > 0) return;
       const slot = grip.closest('.slot'), uid = +slot.dataset.uid, i = indexOf(uid);
       const fromLeft = grip.classList.contains('left');
-      if (i < 0 || (fromLeft && i === 0)) return;
+      if (i < 0) return;
       e.preventDefault();
       const trial = D.spans.map(s => s.beats), orig = trial.slice(), startBeat = D.spans[i].startBeat;
       const px = beatPx(), max = MAX_BARS * beatsPerBar();
-      const nearest = (lo, hi, x, at) => {
-        let best = lo, bestD = Infinity;
-        for (let k = lo; k <= hi; k++) {
-          const d = Math.abs(beatX(at(k), px) - x);
+      const laneLeft = () => $('#lane').getBoundingClientRect().left;
+      const x0 = e.clientX - laneLeft();
+      const widthOf = k => beatX(startBeat + k, px) - beatX(startBeat, px);
+      // The whole-beat length whose width is nearest the target (beats can be uneven, as in 7/8).
+      const nearestLen = target => {
+        let best = 1, bestD = Infinity;
+        for (let k = 1; k <= max; k++) {
+          const d = Math.abs(widthOf(k) - target);
           if (d < bestD) { bestD = d; best = k; }
         }
         return best;
@@ -692,15 +686,9 @@
       grip.classList.add('active');
       try { grip.setPointerCapture(e.pointerId); } catch (err) { /* capture refused: the window listeners below still see the drag */ }
       const move = ev => {
-        const x = ev.clientX - $('#lane').getBoundingClientRect().left;
-        if (fromLeft) {
-          const { lo, hi } = startBounds(i), prevStart = D.spans[i - 1].startBeat, end = startBeat + orig[i];
-          const b = nearest(lo, hi, x, k => k);
-          if (b - prevStart !== trial[i - 1]) { trial[i - 1] = b - prevStart; trial[i] = end - b; layoutTimeline(trial); }
-        } else {
-          const k = nearest(1, max, x, n => startBeat + n);
-          if (k !== trial[i]) { trial[i] = k; layoutTimeline(trial); }
-        }
+        const x = ev.clientX - laneLeft();
+        const k = nearestLen(fromLeft ? widthOf(orig[i]) - (x - x0) : x - beatX(startBeat, px));
+        if (k !== trial[i]) { trial[i] = k; layoutTimeline(trial); }
       };
       const done = ev => {
         window.removeEventListener('pointermove', move);
@@ -774,22 +762,15 @@
       if ((b.dataset.ext || b.dataset.inv) && !state.playing) Sound.playChord(D.voicings[i]);
     });
     // Length slider: applies on every step (arrow keys included) without rebuilding the slider itself.
-    // Starts: moves the change from the chord before, keeping this chord's end where it is.
+    // Length slider: applies on every step (arrow keys included) without rebuilding the slider itself.
     $('#inspector').addEventListener('input', e => {
-      const id = e.target.id;
-      if (id !== 'inspLen' && id !== 'inspStart') return;
+      if (e.target.id !== 'inspLen') return;
       const i = indexOf(state.selected);
       if (i < 0) return;
-      const list = D.spans.map(s => s.beats), v = +e.target.value;
-      if (id === 'inspLen') list[i] = v;
-      else {
-        const end = D.spans[i].startBeat + D.spans[i].beats;
-        list[i - 1] = v - D.spans[i - 1].startBeat;
-        list[i] = end - v;
-      }
-      setLengths(list);
+      const beats = +e.target.value;
+      setLengths(D.spans.map((s, k) => (k === i ? beats : s.beats)));
+      setText($('#inspLenOut'), lenText(beats));
       update({ keepInspector: true });
-      syncLengthControls(i);
     });
     $('#inspector').addEventListener('change', e => {
       if (e.target.id !== 'inspChord') return;
@@ -809,8 +790,10 @@
       Sound.playChord(D.voicings[i]);
       state.selected = inst.uid;
       update();
+      // Show which chord sounded on its own notes (thick accent outlines), not with a wash over the column.
+      vl.querySelectorAll(`[data-colnote="${i}"]`).forEach(g => flash(g, 'ring'));
       const col = vl.querySelector(`[data-col="${i}"]`);
-      if (col) { flash(col, 'flash'); if (refocus) col.focus({ preventScroll: true }); }
+      if (col && refocus) col.focus({ preventScroll: true });
     };
     vl.addEventListener('click', e => {
       const note = e.target.closest('[data-midi]');
@@ -843,6 +826,14 @@
   tabs.select('tab-' + state.tab);
   Quiz.init($('#tab-quiz'), { key: () => D.key, stopMain, load });
   // Theme and presentation changes re-measure drawings; the lane's beat width follows the root size.
-  Chrome.init({ refresh: () => { renderViews(); layoutTimeline(D.spans.map(s => s.beats)); } });
+  Chrome.init({ refresh: () => { renderViews(); layoutTimeline(D.spans.map(s => s.beats)); fitAll(); } });
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(queueFit);
+    $$('.visual-scroll, #circle, #tension').forEach(el => ro.observe(el));
+  }
+  // Backstops: observer callbacks are held while a tab is hidden, so also re-fit on window resize
+  // and when the tab comes back into view.
+  window.addEventListener('resize', queueFit);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) queueFit(); });
   window.app = { state, derived: () => D };
 })();

@@ -213,20 +213,51 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 .pulse b { font-family: var(--font-mono); font-size: 0.78rem; font-weight: 400; color: var(--text-secondary); }
 .pulse.start b { font-weight: 600; color: var(--text-primary); }
 
-/* ---------- Legend ---------- */
-.legend { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 0.82rem; color: var(--text-secondary); }
-.legend li { display: inline-flex; align-items: center; gap: 6px; }
+/* ---------- Legends (style guide 7.10: a grid, one entry per cell) ---------- */
+.lg-key { display: inline-block; flex: none; width: 26px; height: 3px; border-radius: 2px; background: var(--key, var(--fn)); vertical-align: middle; }
+.lg-key.thick { height: 5px; }
+.lg-key.dashed { height: 0; border-radius: 0; background: none; border-top: 3px dashed var(--key); }
+.lg-wash { display: inline-block; flex: none; width: 22px; height: 14px; border-radius: 2px; background: color-mix(in srgb, var(--key) 22%, transparent); border: 1px solid var(--key); }
+.lg-dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--key); }
+.lg-dot.hollow { background: var(--surface); border: 2px solid var(--key); }
+.lg-dot.hollow.now { width: 14px; height: 14px; border-width: 4px; }
+.lg-sq { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 2px; background: var(--surface); border: 2px solid var(--key); }
+.legend {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.875rem;
+  line-height: 1.35;
+  color: var(--text-primary);
+}
+.lg { display: grid; grid-template-columns: 26px minmax(0, 1fr); column-gap: 10px; align-items: start; }
+.lg[hidden] { display: none; }
+.lg > :first-child { justify-self: center; }
+/* Centre each swatch on the first line: half the line-height (1.35 / 2 = 0.675em) minus half the swatch. */
+.lg > .lg-key { margin-top: calc(0.675em - 1.5px); }
+.lg > .lg-key.thick { margin-top: calc(0.675em - 2.5px); }
+.lg > .lg-wash { margin-top: calc(0.675em - 7px); }
+.lg > .lg-dot, .lg > .lg-sq { margin-top: calc(0.675em - 6px); }
+.lg > .lg-dot.hollow.now { margin-top: calc(0.675em - 7px); }
+.legend-note { margin: -6px 0 0; font-size: 0.85rem; color: var(--text-secondary); }
+
+/* ---------- Scroll boxes for drawings that need their width (style guide 8.7) ---------- */
+.visual-scroll { overflow-x: auto; overflow-y: hidden; padding: 0 12px; margin: 0 -12px; }
 
 /* ---------- Roman numerals ---------- */
 .rn { font-family: var(--font-display); font-weight: 600; white-space: nowrap; font-variant-numeric: lining-nums; }
-.rn sup { font-size: 0.55em; vertical-align: 0.7em; margin-left: 0.04em; font-weight: 500; }
+/* Superscripts follow the house floor, max(78%, 0.75rem); stacked figures keep the 0.75rem floor too. */
+.rn sup { font-size: max(78%, 0.75rem); vertical-align: 0.6em; line-height: 1; margin-left: 0.04em; font-weight: 500; }
 .rn-acc { font-size: 0.8em; margin-right: 0.02em; }
-.rn .fig { display: inline-flex; flex-direction: column; font-size: 0.45em; line-height: 1; vertical-align: 0.55em; margin-left: 0.06em; font-weight: 500; }
+.rn .fig { display: inline-flex; flex-direction: column; font-size: max(0.45em, 0.75rem); line-height: 1; vertical-align: 0.55em; margin-left: 0.06em; font-weight: 500; }
 .rn .fig span:only-child { transform: translateY(-0.1em); }
 .rn-target { font-size: 0.65em; margin-left: 0.04em; }
 
 /* ---------- Timeline lane: a time axis, so each chord's width follows its length ---------- */
-.lane-wrap { overflow-x: auto; padding-bottom: 6px; }
+.lane-wrap { padding-bottom: 6px; }
 .lane { position: relative; }
 .ruler { position: relative; height: 1.7rem; border-bottom: 1px solid var(--text-muted); margin-bottom: 8px; }
 .bar-mark { position: absolute; top: 0; bottom: -1px; border-left: 2px solid var(--text-muted); padding-left: 4px;
@@ -279,9 +310,11 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 #tension { width: 100%; height: auto; display: block; }
 .tn-grid { stroke: var(--grid); stroke-dasharray: 3 4; }
 .tn-area { fill: color-mix(in srgb, var(--series-b) 12%, transparent); }
-.tn-line { fill: none; stroke: var(--text-secondary); stroke-width: var(--chart-line); stroke-linejoin: round; }
-.tn-dot { fill: var(--fn); stroke: var(--text-primary); stroke-width: 1.5; }
-.tn-dot.now { stroke-width: 3; }
+/* Strokes are CSS px times --sch-u (drawing units per CSS px), so they keep their weight when the curve is narrow. */
+#tension { --sch-u: 1; }
+.tn-line { fill: none; stroke: var(--text-secondary); stroke-width: calc(var(--chart-line) * var(--sch-u)); stroke-linejoin: round; }
+.tn-dot { fill: var(--fn); stroke: var(--text-primary); stroke-width: calc(1.5px * var(--sch-u)); }
+.tn-dot.now { stroke: var(--accent); stroke-width: calc(var(--chart-line) * 2 * var(--sch-u)); }
 
 /* ---------- Palette ---------- */
 .palette { display: grid; gap: 10px; border-top: 1px solid var(--grid); padding-top: 14px; }

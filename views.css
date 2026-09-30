@@ -3,7 +3,7 @@
 /* ---------- Keyboard ---------- */
 /* The keyboard scrolls sideways on narrow screens: it is a spatial instrument layout
    (WCAG 1.4.10 exception for content that needs two-dimensional layout). */
-.piano-wrap { overflow-x: auto; border-radius: 10px; }
+.piano-wrap .piano { border-radius: 10px; }
 .piano { position: relative; height: 10rem; min-width: 620px; background: var(--key-black); border-radius: 10px; }
 .key { position: absolute; top: 0; padding: 0; border: 0; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
 .key.white { bottom: 0; background: var(--key-white); border: 1px solid var(--key-edge); border-top: 0; border-radius: 0 0 6px 6px; z-index: 1; padding-bottom: 6px; }
@@ -43,8 +43,11 @@
 .chip.mono { font-family: var(--font-mono); }
 
 /* ---------- Circle of fifths ---------- */
-.circle-box { display: grid; justify-items: center; gap: 12px; }
-#circle { width: 100%; max-width: 30rem; height: auto; display: block; }
+.circle-box { display: grid; gap: 12px; }
+.circle-scroll { width: calc(100% + 24px); }
+/* min-width: the narrowest size at which no labels crowd (checked in code across every key);
+   below it the circle keeps this size and scrolls sideways. */
+#circle { --sch-u: 1; width: 100%; max-width: 30rem; min-width: 340px; height: auto; display: block; margin: 0 auto; }
 .cof-seg { cursor: pointer; outline: none; -webkit-tap-highlight-color: transparent; }
 .cof-seg:focus { outline: none; }
 .cof-seg path { fill: var(--surface-2); stroke: var(--surface); stroke-width: 2; }
@@ -52,29 +55,32 @@
 .cof-seg.home path { fill: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
 .cof-seg:hover path { fill: color-mix(in srgb, var(--accent) 18%, var(--surface-2)); }
 /* Keyboard focus draws on the wedge itself; mouse clicks leave no box (the user asked for this). */
-.cof-seg:focus-visible path { stroke: var(--accent); stroke-width: 3; }
-.cof-seg.flash path { fill: color-mix(in srgb, var(--accent) 40%, var(--surface)); }
-.cof-name { font-family: var(--font); font-size: calc(var(--chart-font) + 2px); font-weight: 700; fill: var(--text-secondary); text-anchor: middle; }
-.cof-name.small { font-size: var(--chart-font); }
+.cof-seg:focus-visible path { stroke: var(--accent); stroke-width: calc(3px * var(--sch-u)); }
+/* Drawn text: max(design size, minimum × --sch-u), so labels never render below the chart text (8.7). */
+.cof-name { font-family: var(--font); font-size: max(14px, calc(var(--chart-font) * 1.15 * var(--sch-u))); font-weight: 700; fill: var(--text-secondary); text-anchor: middle; }
+.cof-name.small { font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); }
 .cof-seg.in-key .cof-name { fill: var(--text-primary); }
-.cof-num { font-family: var(--font-display); font-size: var(--chart-font); font-weight: 600; fill: var(--text-secondary); text-anchor: middle; }
-.cof-key { font-family: var(--font-display); font-size: 30px; font-weight: 700; fill: var(--text-primary); text-anchor: middle; }
-.cof-mode { font-size: var(--chart-font); letter-spacing: 0.1em; text-transform: uppercase; fill: var(--text-secondary); text-anchor: middle; font-weight: 600; }
+.cof-num { font-family: var(--font-display); font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); font-weight: 600; fill: var(--text-secondary); text-anchor: middle; }
+.cof-key { font-family: var(--font-display); font-size: max(30px, calc(var(--chart-font) * 2 * var(--sch-u))); font-weight: 700; fill: var(--text-primary); text-anchor: middle; }
+.cof-mode { font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); letter-spacing: 0.1em; text-transform: uppercase; fill: var(--text-secondary); text-anchor: middle; font-weight: 600; }
+/* Labels are positioned by their centres (the script stacks them from their line boxes). */
+.cof-name, .cof-num, .cof-key, .cof-mode { dominant-baseline: central; }
 .cof-path { pointer-events: none; }
-.cof-link { fill: none; stroke: var(--text-primary); stroke-width: var(--chart-line); }
+.cof-link { fill: none; stroke: var(--text-primary); stroke-width: calc(var(--chart-line) * var(--sch-u)); }
 .cof-arrowhead { fill: var(--text-primary); }
-.cof-dot { fill: var(--fn); stroke: var(--text-primary); stroke-width: 1.5; }
-.cof-now { fill: none; stroke: var(--text-primary); stroke-width: 3; }
+.cof-dot { fill: var(--fn); stroke: var(--text-primary); stroke-width: calc(1.5px * var(--sch-u)); }
+/* The chord now playing: a thick accent outline on its own dot, over a surface rim so the accent
+   keeps its contrast on the pale wedge fills (8.6). */
+.cof-now { stroke: var(--accent); stroke-width: calc(var(--chart-line) * 2 * var(--sch-u)); }
+.cof-now-rim { fill: none; stroke: var(--surface); stroke-width: calc((var(--chart-line) * 2 + 6px) * var(--sch-u)); }
 #circleStats { display: grid; gap: 8px; width: 100%; }
 #circleStats p { font-size: 0.85rem; color: var(--text-secondary); }
 
 /* ---------- Voice leading ---------- */
-.vl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-#vl { display: block; }
+#vl { display: block; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .vl-black { fill: color-mix(in srgb, var(--text-primary) 4%, transparent); }
 .vl-c { stroke: var(--grid); }
 .vl-oct { font-family: var(--font-mono); font-size: var(--chart-font-small); fill: var(--text-muted); text-anchor: end; }
-.vl-now { fill: color-mix(in srgb, var(--accent) 8%, transparent); stroke: var(--accent); stroke-width: 1.5; }
 .vl-num { font-family: var(--font-display); font-size: calc(var(--chart-font) + 5px); font-weight: 600; fill: var(--text-primary); text-anchor: middle; }
 .vl-chord { font-family: var(--font-mono); font-size: var(--chart-font-small); fill: var(--text-secondary); text-anchor: middle; }
 .vl-link { fill: none; stroke-width: var(--chart-line); stroke-linecap: round; }
@@ -88,19 +94,16 @@
 .vl-move { font-family: var(--font-mono); font-size: var(--chart-font-small); fill: var(--text-muted); text-anchor: middle; }
 .vl-link, .vl-label, .vl-num, .vl-chord, .vl-move, .vl-now, .vl-black, .vl-c, .vl-oct { pointer-events: none; }
 .vl-col { fill: transparent; cursor: pointer; }
-.vl-col:hover { fill: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+/* The focus ring for a column (a focusable control), not a highlight. */
 .vl-col:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2; }
-.vl-col.flash { fill: color-mix(in srgb, var(--accent) 16%, transparent); }
 .vl-hit { cursor: pointer; }
 .vl-target { fill: transparent; }
-.vl-hit:hover .vl-note, .vl-hit.ring .vl-note { fill: var(--accent); }
-.vl-hit:hover .vl-bass, .vl-hit.ring .vl-bass { stroke: var(--accent); }
-.lkey { display: inline-block; width: 22px; height: 0; border-top: 3px solid var(--vl-step); }
-.lkey.hold { border-top: 6px solid var(--vl-hold); }
-.lkey.leap { border-top: 3px dashed var(--vl-leap); }
-.mkey { display: inline-block; width: 11px; height: 11px; border: 2px solid var(--text-primary); }
-.mkey.round { border-radius: 50%; background: var(--text-primary); }
-.mkey.square { border-radius: 2px; background: var(--surface); }
+/* The chord now playing or just clicked: its notes' own outlines turn accent at twice the chart line,
+   with the surface around them, and its name goes bold (8.6). Nothing is drawn over the graph. */
+.vl-hit.cur .vl-note, .vl-hit.ring .vl-note, .vl-hit.cur .vl-bass, .vl-hit.ring .vl-bass { stroke: var(--accent); stroke-width: calc(var(--chart-line) * 2); }
+.vl-hit:hover .vl-note { fill: var(--accent); }
+.vl-hit:hover .vl-bass { stroke: var(--accent); }
+.vl-num.cur, .vl-chord.cur { font-weight: 800; }
 
 /* ---------- Tables ---------- */
 .table-view summary { cursor: pointer; font-weight: 600; font-size: 0.9rem; color: var(--text-secondary); padding: 4px 0; }
@@ -215,6 +218,8 @@ html[data-present] .present-hint { display: block; margin: 12px 0 0; color: var(
   html[data-present] .check input { width: 24px; height: 24px; }
   html[data-present] .btn { padding: 12px 24px; }
   html[data-present] :is(a, button, input, select, summary, [tabindex]):focus-visible { outline-width: 3px; outline-offset: 3px; }
+  /* Larger drawn text needs a wider circle (crowding check: clean from 450 px while presenting). */
+  html[data-present] #circle { min-width: 460px; }
 
   html[data-present] {
     --chart-font-small: 15px; --chart-font: 16px; --chart-line: 3px; --chart-line-total: 3.5px;
@@ -224,17 +229,22 @@ html[data-present] .present-hint { display: block; margin: 12px 0 0; color: var(
     --critical-text: #a52a2a;
   }
 }
+/* While presenting on a laptop-width screen, stack the Chord and Circle panels so the circle gets the
+   full width it needs; only the layout changes, not the source or tab order (8.7). */
+@media (min-width: 900px) and (max-width: 1099px) {
+  html[data-present] .grid-2 { grid-template-columns: minmax(0, 1fr); }
+}
 @media (min-width: 900px) and (prefers-color-scheme: dark) {
   html[data-present]:not([data-theme="light"]) {
     --text-secondary: #d6d5cb; --text-muted: #b3b1a7; --axis: #8a8880; --grid: #3a3a37;
     --series-a: #22b07f; --series-b: #e8672f; --series-c: #4a93ec; --series-d: #a89ff0;
-    --critical-text: #f28b85; --success-text: #3dbb3d;
+    --critical-text: #f28b85; --success-text: #40bf40;
   }
 }
 @media (min-width: 900px) {
   html[data-present][data-theme="dark"] {
     --text-secondary: #d6d5cb; --text-muted: #b3b1a7; --axis: #8a8880; --grid: #3a3a37;
     --series-a: #22b07f; --series-b: #e8672f; --series-c: #4a93ec; --series-d: #a89ff0;
-    --critical-text: #f28b85; --success-text: #3dbb3d;
+    --critical-text: #f28b85; --success-text: #40bf40;
   }
 }

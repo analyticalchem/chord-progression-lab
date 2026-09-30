@@ -66,7 +66,15 @@ const Views = (() => {
     const relMajor = key.mode === 'major' ? key.pc : (key.pc + 3) % 12;
     const kp = FIFTHS.indexOf(relMajor);
     const near = p => [-1, 0, 1].some(d => (kp + d + 12) % 12 === p);
-    let h = `<title id="circle-title">Circle of fifths: major keys on the outer ring, minor keys on the inner ring. The shaded wedges are the chords of ${esc(key.name)} ${key.mode}. Each wedge is a button that plays its chord. Arrows trace the roots of your progression; the counts of each kind of root motion are listed below the circle.</title>`;
+    // Label sizes in drawing units, the same formulas as the CSS: max(design size, minimum × --sch-u).
+    // A wedge's name and numeral stack vertically, spaced by their line boxes, so they never meet
+    // whatever the wedge's angle; the pair is centred on the middle of its ring.
+    const u = parseFloat(svg.style.getPropertyValue('--sch-u')) || 1, cf = cssPx('--chart-font') || 12;
+    const fName = Math.max(14, cf * 1.15 * u), fSmall = Math.max(12, cf * u), fKey = Math.max(30, cf * 2 * u);
+    // Half line-box heights, measured: Figtree 0.61 × its size, Bodoni Moda 0.77 × (its tall ascenders).
+    const FIG = 0.61, BOD = 0.77;
+    const pair = (topHalf, bottomHalf) => topHalf + bottomHalf + 1; // centre-to-centre spacing of two stacked labels
+    let h = `<title id="circle-title">Circle of fifths: major keys on the outer ring, minor keys on the inner ring. The shaded wedges are the chords of ${esc(key.name)} ${key.mode}. Each wedge is a button that plays its chord. In the middle, dots lined up with the wedges mark your chords' roots and arrows trace how they move; the key to the marks and the counts of each kind of root motion are below the circle.</title>`;
     h += `<defs><marker id="cof-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" class="cof-arrowhead"/></marker></defs>`;
     for (let p = 0; p < 12; p++) {
       const a0 = p * 30 - 15, a1 = p * 30 + 15;
@@ -74,40 +82,48 @@ const Views = (() => {
       const isTonicMaj = key.mode === 'major' && p === kp, isTonicMin = key.mode === 'minor' && p === kp;
       const majNum = inKey ? numerals(FIFTHS[p], 'maj') : '';
       const minNum = inKey ? numerals((FIFTHS[p] + 9) % 12, 'min') : '';
-      const [mx, my] = polar(majNum ? 182 : 174, p * 30), [mnx, mny] = polar(163, p * 30);
-      const [nx, ny] = polar(minNum ? 129 : 120, p * 30), [nnx, nny] = polar(113, p * 30);
+      const [mx, my] = polar((R_MID + R_OUT) / 2, p * 30), [nx, ny] = polar((R_IN + R_MID) / 2, p * 30);
+      const so = majNum ? pair(FIG * fName, BOD * fSmall) / 2 : 0, si = minNum ? pair(FIG * fSmall, BOD * fSmall) / 2 : 0;
       h += `<g class="cof-seg${inKey ? ' in-key' : ''}${isTonicMaj ? ' home' : ''}" data-pc="${FIFTHS[p]}" data-mode="major" tabindex="0" role="button" aria-label="${MAJ_LABELS[p]} major${majNum ? `, ${majNum} in this key` : ''}">
         <path d="${wedge(R_MID, R_OUT, a0, a1)}"/>
-        <text x="${mx}" y="${my + 5}" class="cof-name">${MAJ_LABELS[p]}</text>
-        ${majNum ? `<text x="${mnx}" y="${mny + 4}" class="cof-num">${majNum}</text>` : ''}</g>`;
+        <text x="${mx}" y="${my - so}" class="cof-name">${MAJ_LABELS[p]}</text>
+        ${majNum ? `<text x="${mx}" y="${my + so}" class="cof-num">${majNum}</text>` : ''}</g>`;
       h += `<g class="cof-seg inner${inKey ? ' in-key' : ''}${isTonicMin ? ' home' : ''}" data-pc="${(FIFTHS[p] + 9) % 12}" data-mode="minor" tabindex="0" role="button" aria-label="${MIN_LABELS[p].replace(/m$/, '')} minor${minNum ? `, ${minNum} in this key` : ''}">
         <path d="${wedge(R_IN, R_MID, a0, a1)}"/>
-        <text x="${nx}" y="${ny + 4}" class="cof-name small">${MIN_LABELS[p]}</text>
-        ${minNum ? `<text x="${nnx}" y="${nny + 3.5}" class="cof-num">${minNum}</text>` : ''}</g>`;
+        <text x="${nx}" y="${ny - si}" class="cof-name small">${MIN_LABELS[p]}</text>
+        ${minNum ? `<text x="${nx}" y="${ny + si}" class="cof-num">${minNum}</text>` : ''}</g>`;
     }
-    h += `<text x="${C}" y="${C - 6}" class="cof-key">${esc(key.name)}</text><text x="${C}" y="${C + 16}" class="cof-mode">${key.mode}</text>`;
+    const sk = pair(BOD * fKey, FIG * fSmall) / 2;
+    h += `<text x="${C}" y="${C - sk}" class="cof-key">${esc(key.name)}</text><text x="${C}" y="${C + sk}" class="cof-mode">${key.mode}</text>`;
 
-    // Path of the progression's roots
-    const pts = chords.map(c => {
-      const r = isMinorish(c.quality) ? R_IN + 7 : R_MID + 8;
-      return polar(r, chordPos(c) * 30);
-    });
+    // Path of the progression's roots, drawn in the open middle of the circle so no dot or arrow
+    // sits on a wedge label: an outer row of dots for major chords, an inner row for minor ones,
+    // each lined up with its wedge.
+    const R_MAJ_DOT = R_IN - 14, R_MIN_DOT = R_IN - 30;
+    const pts = chords.map(c => polar(isMinorish(c.quality) ? R_MIN_DOT : R_MAJ_DOT, chordPos(c) * 30));
     let path = '';
     for (let i = 1; i < pts.length; i++) {
       const [x1, y1] = pts[i - 1], [x2, y2] = pts[i];
       if (Math.hypot(x2 - x1, y2 - y1) < 1) continue;
-      const cx = (x1 + x2) / 2 + (C - (x1 + x2) / 2) * 0.35, cy = (y1 + y2) / 2 + (C - (y1 + y2) / 2) * 0.35;
+      // Bow each arrow outward, away from the key name in the centre; a near-straight jump across
+      // the circle bows sideways instead.
+      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = mx - C, dy = my - C, dist = Math.hypot(dx, dy);
+      const [cx, cy] = dist > 20 ? [mx + dx * 0.3, my + dy * 0.3]
+        : [mx - (y2 - y1) / Math.hypot(x2 - x1, y2 - y1) * 40, my + (x2 - x1) / Math.hypot(x2 - x1, y2 - y1) * 40];
       path += `<path d="M${x1} ${y1}Q${cx} ${cy} ${x2} ${y2}" class="cof-link" marker-end="url(#cof-arrow)"/>`;
     }
+    // Marker sizes are CSS px converted to drawing units (u, above), so they hold their size on a phone.
+    const r = (cssPx('--chart-marker') || 5) * u;
     const seen = new Set();
     pts.forEach(([x, y], i) => {
       const k = `${Math.round(x)},${Math.round(y)}`;
-      if (!seen.has(k)) path += `<circle cx="${x}" cy="${y}" r="5" class="cof-dot fn-${chords[i].color}"/>`;
+      if (!seen.has(k)) path += `<circle cx="${x}" cy="${y}" r="${r}" class="cof-dot fn-${chords[i].color}"/>`;
       seen.add(k);
     });
+    // The chord now playing: its own dot, larger, with a thick accent outline over a surface rim (8.6).
     if (current >= 0 && pts[current]) {
       const [x, y] = pts[current];
-      path += `<circle cx="${x}" cy="${y}" r="11" class="cof-now"/>`;
+      path += `<circle cx="${x}" cy="${y}" r="${r * 1.6}" class="cof-now-rim"/><circle cx="${x}" cy="${y}" r="${r * 1.6}" class="cof-dot cof-now fn-${chords[current].color}"/>`;
     }
     svg.innerHTML = h + `<g class="cof-path" aria-hidden="true">${path}</g>`;
     svg.querySelectorAll('.cof-seg').forEach(g => {
@@ -148,11 +164,13 @@ const Views = (() => {
       if (BLACK.includes(m % 12)) h += `<rect x="${LEFT}" y="${y(m) - ROW / 2}" width="${W - LEFT}" height="${ROW}" class="vl-black"/>`;
       if (m % 12 === 0) h += `<line x1="${LEFT}" x2="${W}" y1="${y(m) + ROW / 2}" y2="${y(m) + ROW / 2}" class="vl-c"/><text x="${LEFT - 6}" y="${y(m) + 3 * scale}" class="vl-oct">C${m / 12 - 1}</text>`;
     }
-    if (current >= 0 && current < chords.length) h += `<rect x="${LEFT + current * COL + 3}" y="4" width="${COL - 6}" height="${H - 8}" rx="8" class="vl-now"/>`;
+    // The chord now playing is shown on its own marks (bold heading, thick accent outlines on its
+    // notes), never with a box drawn over the graph (style guide 8.6).
+    const cur = i => (i === current ? ' cur' : '');
     chords.forEach((c, i) => {
       h += `<rect x="${LEFT + i * COL + 3}" y="4" width="${COL - 6}" height="${H - 8}" rx="8" class="vl-col" data-col="${i}"
         tabindex="0" role="button" aria-label="Play chord ${i + 1}, ${esc(c.name)}"><title>Play ${esc(c.name)}</title></rect>`;
-      h += `<text x="${x(i)}" y="${22 * scale}" class="vl-num">${esc(c.text)}</text><text x="${x(i)}" y="${38 * scale}" class="vl-chord">${esc(c.name)}</text>`;
+      h += `<text x="${x(i)}" y="${22 * scale}" class="vl-num${cur(i)}">${esc(c.text)}</text><text x="${x(i)}" y="${38 * scale}" class="vl-chord${cur(i)}">${esc(c.name)}</text>`;
     });
     // Lines first so dots sit on top
     for (let i = 1; i < voicings.length; i++) {
@@ -171,13 +189,13 @@ const Views = (() => {
     const lx = R * 2, ly = 3.5 * scale;
     voicings.forEach((v, i) => {
       const bn = esc(noteName(i, v.bass));
-      h += `<g class="vl-hit" data-midi="${v.bass}" data-bass="1"><title>Bass ${bn}</title>
+      h += `<g class="vl-hit${cur(i)}" data-midi="${v.bass}" data-bass="1" data-colnote="${i}"><title>Bass ${bn}</title>
         <circle cx="${x(i)}" cy="${y(v.bass)}" r="${HIT}" class="vl-target"/>
         <rect x="${x(i) - R - 1}" y="${y(v.bass) - R - 1}" width="${2 * R + 2}" height="${2 * R + 2}" rx="2" class="vl-bass"/></g>`;
       h += `<text x="${x(i) + lx}" y="${y(v.bass) + ly}" class="vl-label">${bn}</text>`;
       v.upper.forEach(m => {
         const nn = esc(noteName(i, m));
-        h += `<g class="vl-hit" data-midi="${m}"><title>${nn}</title>
+        h += `<g class="vl-hit${cur(i)}" data-midi="${m}" data-colnote="${i}"><title>${nn}</title>
           <circle cx="${x(i)}" cy="${y(m)}" r="${HIT}" class="vl-target"/>
           <circle cx="${x(i)}" cy="${y(m)}" r="${R + 0.5}" class="vl-note"/></g>`;
         h += `<text x="${x(i) + lx}" y="${y(m) + ly}" class="vl-label">${nn}</text>`;
@@ -201,12 +219,40 @@ const Views = (() => {
     let h = [25, 50, 75].map(t => `<line x1="${P}" x2="${W - P}" y1="${py(t)}" y2="${py(t)}" class="tn-grid"/>`).join('');
     const line = pts.map((p, i) => (i ? 'L' : 'M') + p[0] + ' ' + p[1]).join('');
     if (n > 1) h += `<path d="${line}L${pts[n - 1][0]} ${py(0)}L${pts[0][0]} ${py(0)}Z" class="tn-area"/><path d="${line}" class="tn-line"/>`;
+    // Marker sizes are CSS px converted to drawing units, so dots keep their size when the curve is narrow.
+    const u = parseFloat(svg.style.getPropertyValue('--sch-u')) || 1;
+    const r = (cssPx('--chart-marker') || 5) * u;
     pts.forEach(([x, y], i) => {
-      const r = cssPx('--chart-marker') || 5;
-      h += `<circle cx="${x}" cy="${y}" r="${i === current ? r + 2.5 : r}" class="tn-dot fn-${chords[i].color}${i === current ? ' now' : ''}"/>`;
+      h += `<circle cx="${x}" cy="${y}" r="${i === current ? r * 1.5 : r}" class="tn-dot fn-${chords[i].color}${i === current ? ' now' : ''}"/>`;
     });
     svg.innerHTML = h;
   }
 
-  return { Piano, circle, rootMotion, voiceLeading, tension, esc };
+  // ---------- Fitting drawings to their size (style guide 8.7) ----------
+  // --sch-u is drawing units per CSS px. CSS sizes drawn text as max(design size, minimum × --sch-u),
+  // so labels never shrink below the chart text on a phone. Returns true when the value changed,
+  // so the caller knows to redraw marks sized in script.
+  function fitSvg(svg) {
+    const vb = svg.viewBox && svg.viewBox.baseVal, box = svg.getBoundingClientRect();
+    if (!vb || !vb.width || !box.width) return false;
+    const u = (1 / Math.min(box.width / vb.width, box.height / vb.height || Infinity)).toFixed(4);
+    if (svg.style.getPropertyValue('--sch-u') === u) return false;
+    svg.style.setProperty('--sch-u', u);
+    return true;
+  }
+  // A scroll box is a named, focusable region only while it actually scrolls; a focusable box that
+  // does not scroll would just be an extra tab stop.
+  function fitScroll(box, label) {
+    if (box.scrollWidth > box.clientWidth + 1) {
+      box.tabIndex = 0;
+      box.setAttribute('role', 'region');
+      box.setAttribute('aria-label', `${label}, scrolls sideways`);
+    } else {
+      box.removeAttribute('tabindex');
+      box.removeAttribute('role');
+      box.removeAttribute('aria-label');
+    }
+  }
+
+  return { Piano, circle, rootMotion, voiceLeading, tension, fitSvg, fitScroll, esc };
 })();
