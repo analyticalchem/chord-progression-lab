@@ -147,28 +147,20 @@
       <ol class="beats" id="beats" aria-hidden="true"></ol>
     </div>
 
-    <ul class="legend" role="list" aria-label="Chord functions">
-      <li class="lg"><span class="lg-key thick fn-tonic" aria-hidden="true"></span><span>Tonic, home: solid blue band, round dot</span></li>
-      <li class="lg"><span class="lg-key thick fn-sub" aria-hidden="true"></span><span>Predominant, moving away: dashed green band, square dot</span></li>
-      <li class="lg"><span class="lg-key thick fn-dom" aria-hidden="true"></span><span>Dominant, tension toward home: dotted orange band, diamond dot</span></li>
-      <li class="lg"><span class="lg-key thick fn-chrom" aria-hidden="true"></span><span>Borrowed or chromatic: double violet band, triangle dot</span></li>
-    </ul>
-    <p class="legend-note">Bands top each chord and palette button; the dot shapes mark chords on the tension curve and the circle of fifths. Each chord's function is also written on it, and for short chords in the Chord panel and the table under Voice Leading.</p>
-    <!-- The lane is a time axis, so it scrolls sideways inside its box when it is longer than the
-         screen (WCAG 1.4.10 exception for content that needs two-dimensional layout). -->
-    <div class="visual-scroll lane-wrap" data-scroll-label="Progression timeline">
-      <div class="lane" id="lane">
-        <div class="ruler" id="ruler" aria-hidden="true"></div>
-        <ol class="timeline" id="timeline" aria-label="Chords of the progression, in order"></ol>
-      </div>
+    <!-- The time lane wraps onto rows of whole bars, like lines of music; a chord that runs past the
+         end of a row continues on the next. Each chord names its function in words, so the colours
+         need no key here. -->
+    <div class="lane" id="lane">
+      <div class="ruler" id="ruler" aria-hidden="true"></div>
+      <ol class="timeline" id="timeline" aria-label="Chords of the progression, in order" aria-describedby="laneHelp laneNote"></ol>
     </div>
-    <p class="hint">Drag a chord's right edge to change how long it plays; the chords after it move to make room. Drag its left edge to move only where it starts: nothing else moves, and starting later leaves a rest, which plays silence. Drop a chord onto a rest, or select the rest and pick a chord below, to fill it. Both edges snap to each beat; the Length and Starts sliders in the Chord panel do the same from the keyboard.</p>
-    <p class="card-sub" id="laneNote"></p>
+    <p class="visually-hidden" id="laneHelp">Each chord and rest is a button: select it to change it in the Chord panel. Pointer users can drag a chord's right edge to change how long it plays, which moves the chords after it, or its left edge to move only where it starts, which leaves a rest of silence before it. The Length and Starts sliders in the Chord panel do the same. To fill a rest, select it and pick a chord from the palette, or drop a chord onto it.</p>
+    <p class="visually-hidden" id="laneNote"></p>
 
     <div class="tension">
       <div class="tension-head"><span class="control-label">Tension curve</span><span id="tensionNow"></span></div>
       <div class="tension-axis" aria-hidden="true"><span>pull</span><span>rest</span></div>
-      <svg id="tension" role="img" aria-label="Tension curve, one point per chord. Each chord's tension value is in the Chord panel and in the table under Voice Leading."></svg>
+      <svg id="tension" role="img" aria-label="Tension curve, one point per chord; the point's shape shows the chord's function, as on the circle of fifths. Each chord's tension value is in the Chord panel and in the table under Voice Leading."></svg>
     </div>
 
     <div class="palette">
@@ -202,6 +194,7 @@
           <button type="button" class="chip" data-cof="play" aria-pressed="false">Play only</button>
           <button type="button" class="chip" data-cof="key" aria-pressed="true">Play + change key</button>
         </div>
+        <label class="check"><input type="checkbox" id="cofShow" checked> Show your progression</label>
       </div>
       <div class="circle-box">
         <div class="visual-scroll circle-scroll" data-scroll-label="Circle of fifths">
@@ -210,9 +203,9 @@
         <p class="card-sub" id="cofPlayed" role="status"></p>
         <ul class="legend" role="list" aria-label="Circle of fifths key">
           <li class="lg"><span class="lg-wash" style="--key: var(--accent)" aria-hidden="true"></span><span>Shaded wedges: the chords of the key, with their numerals; darkest: the key itself, named in the middle</span></li>
-          <li class="lg"><span class="lg-dot" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Dots in the middle: your chords' roots, lined up with their wedges; outer row major, inner row minor; the shape shows the chord's function, as in the key above the timeline</span></li>
-          <li class="lg"><span class="lg-key" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Arrows: how the roots move from chord to chord</span></li>
-          <li class="lg"><span class="lg-dot hollow now" style="--key: var(--accent)" aria-hidden="true"></span><span>Larger mark with a thick blue outline: the chord now playing</span></li>
+          <li class="lg" data-cof-path><span class="lg-dot" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Marks on the wedges: your chords' roots; the shape shows function: circle tonic, square predominant, diamond dominant, triangle borrowed or chromatic</span></li>
+          <li class="lg" data-cof-path><span class="lg-key" style="--key: var(--text-primary)" aria-hidden="true"></span><span>Arrows: how the roots move from chord to chord</span></li>
+          <li class="lg" data-cof-path><span class="lg-dot hollow now" style="--key: var(--accent)" aria-hidden="true"></span><span>Larger mark with a thick blue outline: the chord now playing</span></li>
         </ul>
         <div id="circleStats"></div>
       </div>
@@ -289,7 +282,7 @@
       <h3>Tension and next-chord hints</h3>
       <p>Tension values (0 to 100) are illustrative scores, not measurements. Each chord starts from a value for its function (tonic low, dominant high), and 7ths, suspensions and inversions add to it. The "often next" hints follow common-practice tendencies, such as V moving to I or vi; any chord can follow any other.</p>
       <h3>Spelling and the circle of fifths</h3>
-      <p>Notes are spelled from the key's scale, so a key uses one letter per scale degree (F♯ in D major, G♭ in E♭ minor). On the circle, major keys sit on the outer ring and their relative minors on the inner ring. Your progression's roots are drawn in the middle, lined up with their wedges; a diminished chord lines up with the minor chord on the same root (B° with Bm).</p>
+      <p>Notes are spelled from the key's scale, so a key uses one letter per scale degree (F♯ in D major, G♭ in E♭ minor). On the circle, major keys sit on the outer ring and their relative minors on the inner ring. Your progression's roots are marked on their wedges; a diminished chord is marked on the minor wedge with the same root (B° on Bm). Show your progression turns the marks and arrows off and on.</p>
     </details>
   </section>
 </main>

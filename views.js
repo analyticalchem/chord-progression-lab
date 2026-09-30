@@ -71,7 +71,11 @@ const Views = (() => {
   const isMinorish = q => q === 'min' || q === 'dim';
   const chordPos = c => FIFTHS.indexOf(isMinorish(c.quality) ? (c.rootPc + 3) % 12 : c.rootPc);
 
-  function circle(svg, { key, chords, current, numerals, onPick }) {
+  // Drawn in three layers: the wedges (the buttons), then the progression (marks on the wedges
+  // and arrows between them), then every label on top with a knockout halo in its wedge's fill, so
+  // an arrow passing under a label never makes it hard to read. Labels ignore the pointer, so a click
+  // on one reaches its wedge.
+  function circle(svg, { key, chords, current, numerals, onPick, showPath }) {
     const relMajor = key.mode === 'major' ? key.pc : (key.pc + 3) % 12;
     const kp = FIFTHS.indexOf(relMajor);
     const near = p => [-1, 0, 1].some(d => (kp + d + 12) % 12 === p);
@@ -83,8 +87,10 @@ const Views = (() => {
     // Half line-box heights, measured: Figtree 0.61 × its size, Bodoni Moda 0.77 × (its tall ascenders).
     const FIG = 0.61, BOD = 0.77;
     const pair = (topHalf, bottomHalf) => topHalf + bottomHalf + 1; // centre-to-centre spacing of two stacked labels
-    let h = `<title id="circle-title">Circle of fifths: major keys on the outer ring, minor keys on the inner ring. The shaded wedges are the chords of ${esc(key.name)} ${key.mode}. Each wedge is a button that plays its chord. In the middle, dots lined up with the wedges mark your chords' roots and arrows trace how they move; the key to the marks and the counts of each kind of root motion are below the circle.</title>`;
+    const pathWords = showPath ? ' Marks on the wedges show your chords\' roots, and arrows trace how they move.' : '';
+    let h = `<title id="circle-title">Circle of fifths: major keys on the outer ring, minor keys on the inner ring. The shaded wedges are the chords of ${esc(key.name)} ${key.mode}. Each wedge is a button that plays its chord.${pathWords} The key and the counts of each kind of root motion are below the circle.</title>`;
     h += `<defs><marker id="cof-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 1L9 5L0 9z" class="cof-arrowhead"/></marker></defs>`;
+    let wedges = '', labels = '';
     for (let p = 0; p < 12; p++) {
       const a0 = p * 30 - 15, a1 = p * 30 + 15;
       const inKey = near(p);
@@ -93,48 +99,43 @@ const Views = (() => {
       const minNum = inKey ? numerals((FIFTHS[p] + 9) % 12, 'min') : '';
       const [mx, my] = polar((R_MID + R_OUT) / 2, p * 30), [nx, ny] = polar((R_IN + R_MID) / 2, p * 30);
       const so = majNum ? pair(FIG * fName, BOD * fSmall) / 2 : 0, si = minNum ? pair(FIG * fSmall, BOD * fSmall) / 2 : 0;
-      h += `<g class="cof-seg${inKey ? ' in-key' : ''}${isTonicMaj ? ' home' : ''}" data-pc="${FIFTHS[p]}" data-mode="major" tabindex="0" role="button" aria-label="${MAJ_LABELS[p]} major${majNum ? `, ${majNum} in this key` : ''}">
-        <path d="${wedge(R_MID, R_OUT, a0, a1)}"/>
-        <text x="${mx}" y="${my - so}" class="cof-name">${MAJ_LABELS[p]}</text>
-        ${majNum ? `<text x="${mx}" y="${my + so}" class="cof-num">${majNum}</text>` : ''}</g>`;
-      h += `<g class="cof-seg inner${inKey ? ' in-key' : ''}${isTonicMin ? ' home' : ''}" data-pc="${(FIFTHS[p] + 9) % 12}" data-mode="minor" tabindex="0" role="button" aria-label="${MIN_LABELS[p].replace(/m$/, '')} minor${minNum ? `, ${minNum} in this key` : ''}">
-        <path d="${wedge(R_IN, R_MID, a0, a1)}"/>
-        <text x="${nx}" y="${ny - si}" class="cof-name small">${MIN_LABELS[p]}</text>
-        ${minNum ? `<text x="${nx}" y="${ny + si}" class="cof-num">${minNum}</text>` : ''}</g>`;
+      const outer = `${inKey ? ' in-key' : ''}${isTonicMaj ? ' home' : ''}`, inner = `${inKey ? ' in-key' : ''}${isTonicMin ? ' home' : ''}`;
+      wedges += `<g class="cof-seg${outer}" data-pc="${FIFTHS[p]}" data-mode="major" tabindex="0" role="button" aria-label="${MAJ_LABELS[p]} major${majNum ? `, ${majNum} in this key` : ''}"><path d="${wedge(R_MID, R_OUT, a0, a1)}"/></g>`;
+      wedges += `<g class="cof-seg inner${inner}" data-pc="${(FIFTHS[p] + 9) % 12}" data-mode="minor" tabindex="0" role="button" aria-label="${MIN_LABELS[p].replace(/m$/, '')} minor${minNum ? `, ${minNum} in this key` : ''}"><path d="${wedge(R_IN, R_MID, a0, a1)}"/></g>`;
+      labels += `<text x="${mx}" y="${my - so}" class="cof-name${outer}">${MAJ_LABELS[p]}</text>`;
+      if (majNum) labels += `<text x="${mx}" y="${my + so}" class="cof-num${outer}">${majNum}</text>`;
+      labels += `<text x="${nx}" y="${ny - si}" class="cof-name small${inner}">${MIN_LABELS[p]}</text>`;
+      if (minNum) labels += `<text x="${nx}" y="${ny + si}" class="cof-num${inner}">${minNum}</text>`;
     }
     const sk = pair(BOD * fKey, FIG * fSmall) / 2;
-    h += `<text x="${C}" y="${C - sk}" class="cof-key">${esc(key.name)}</text><text x="${C}" y="${C + sk}" class="cof-mode">${key.mode}</text>`;
+    labels += `<text x="${C}" y="${C - sk}" class="cof-key">${esc(key.name)}</text><text x="${C}" y="${C + sk}" class="cof-mode">${key.mode}</text>`;
 
-    // Path of the progression's roots, drawn in the open middle of the circle so no dot or arrow
-    // sits on a wedge label: an outer row of dots for major chords, an inner row for minor ones,
-    // each lined up with its wedge.
-    const R_MAJ_DOT = R_IN - 14, R_MIN_DOT = R_IN - 30;
-    const pts = chords.map(c => polar(isMinorish(c.quality) ? R_MIN_DOT : R_MAJ_DOT, chordPos(c) * 30));
+    // The progression's roots, marked on their own wedges near the ring's inner edge, with arrows
+    // bowing toward the centre between them.
     let path = '';
-    for (let i = 1; i < pts.length; i++) {
-      const [x1, y1] = pts[i - 1], [x2, y2] = pts[i];
-      if (Math.hypot(x2 - x1, y2 - y1) < 1) continue;
-      // Bow each arrow outward, away from the key name in the centre; a near-straight jump across
-      // the circle bows sideways instead.
-      const mx = (x1 + x2) / 2, my = (y1 + y2) / 2, dx = mx - C, dy = my - C, dist = Math.hypot(dx, dy);
-      const [cx, cy] = dist > 20 ? [mx + dx * 0.3, my + dy * 0.3]
-        : [mx - (y2 - y1) / Math.hypot(x2 - x1, y2 - y1) * 40, my + (x2 - x1) / Math.hypot(x2 - x1, y2 - y1) * 40];
-      path += `<path d="M${x1} ${y1}Q${cx} ${cy} ${x2} ${y2}" class="cof-link" marker-end="url(#cof-arrow)"/>`;
+    if (showPath) {
+      const pts = chords.map(c => polar(isMinorish(c.quality) ? R_IN + 7 : R_MID + 8, chordPos(c) * 30));
+      for (let i = 1; i < pts.length; i++) {
+        const [x1, y1] = pts[i - 1], [x2, y2] = pts[i];
+        if (Math.hypot(x2 - x1, y2 - y1) < 1) continue;
+        const cx = (x1 + x2) / 2 + (C - (x1 + x2) / 2) * 0.35, cy = (y1 + y2) / 2 + (C - (y1 + y2) / 2) * 0.35;
+        path += `<path d="M${x1} ${y1}Q${cx} ${cy} ${x2} ${y2}" class="cof-link" marker-end="url(#cof-arrow)"/>`;
+      }
+      // Marker sizes are CSS px converted to drawing units (u, above), so they hold their size on a phone.
+      const r = (cssPx('--chart-marker') || 5) * u;
+      const seen = new Set();
+      pts.forEach(([x, y], i) => {
+        const k = `${Math.round(x)},${Math.round(y)}`;
+        if (!seen.has(k)) path += mark(x, y, r, chords[i].color, 'cof-dot');
+        seen.add(k);
+      });
+      // The chord now playing: its own mark, larger, with a thick accent outline over a surface rim (8.6).
+      if (current >= 0 && pts[current]) {
+        const [x, y] = pts[current], fn = chords[current].color;
+        path += mark(x, y, r * 1.6, fn, 'cof-now-rim') + mark(x, y, r * 1.6, fn, 'cof-dot cof-now');
+      }
     }
-    // Marker sizes are CSS px converted to drawing units (u, above), so they hold their size on a phone.
-    const r = (cssPx('--chart-marker') || 5) * u;
-    const seen = new Set();
-    pts.forEach(([x, y], i) => {
-      const k = `${Math.round(x)},${Math.round(y)}`;
-      if (!seen.has(k)) path += mark(x, y, r, chords[i].color, 'cof-dot');
-      seen.add(k);
-    });
-    // The chord now playing: its own mark, larger, with a thick accent outline over a surface rim (8.6).
-    if (current >= 0 && pts[current]) {
-      const [x, y] = pts[current], fn = chords[current].color;
-      path += mark(x, y, r * 1.6, fn, 'cof-now-rim') + mark(x, y, r * 1.6, fn, 'cof-dot cof-now');
-    }
-    svg.innerHTML = h + `<g class="cof-path" aria-hidden="true">${path}</g>`;
+    svg.innerHTML = h + wedges + `<g class="cof-path" aria-hidden="true">${path}</g><g class="cof-labels" aria-hidden="true">${labels}</g>`;
     svg.querySelectorAll('.cof-seg').forEach(g => {
       const pick = viaKeyboard => onPick(+g.dataset.pc, g.dataset.mode, viaKeyboard);
       g.addEventListener('click', () => pick(false));

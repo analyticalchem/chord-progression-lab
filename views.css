@@ -25,7 +25,7 @@
 .insp-empty { color: var(--text-secondary); }
 .insp-head { position: relative; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 12px 14px 10px;
   border-radius: 10px; background: color-mix(in srgb, var(--fn) 9%, var(--surface)); border: 1px solid var(--border); overflow: hidden; }
-.insp-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--band, var(--fn)); }
+.insp-head::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; background: var(--fn); }
 .insp-head.rest-head { background: var(--surface-2); border: 2px dashed var(--border-strong); }
 .insp-head.rest-head::before { display: none; }
 .insp-rn { font-size: 3.2rem; line-height: 1; min-width: 4rem; }
@@ -61,7 +61,13 @@
 /* Drawn text: max(design size, minimum × --sch-u), so labels never render below the chart text (8.7). */
 .cof-name { font-family: var(--font); font-size: max(14px, calc(var(--chart-font) * 1.15 * var(--sch-u))); font-weight: 700; fill: var(--text-secondary); text-anchor: middle; }
 .cof-name.small { font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); }
-.cof-seg.in-key .cof-name { fill: var(--text-primary); }
+.cof-name.in-key { fill: var(--text-primary); }
+/* Labels sit above the progression's arrows with a knockout halo in their wedge's own fill. */
+.cof-labels { pointer-events: none; }
+.cof-labels text { paint-order: stroke; stroke-linejoin: round; stroke-width: calc(var(--chart-halo) * var(--sch-u)); stroke: var(--surface-2); }
+.cof-labels text.in-key { stroke: color-mix(in srgb, var(--accent) 12%, var(--surface-2)); }
+.cof-labels text.home { stroke: color-mix(in srgb, var(--accent) 26%, var(--surface)); }
+.cof-labels .cof-key, .cof-labels .cof-mode { stroke: var(--surface); }
 .cof-num { font-family: var(--font-display); font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); font-weight: 600; fill: var(--text-secondary); text-anchor: middle; }
 .cof-key { font-family: var(--font-display); font-size: max(30px, calc(var(--chart-font) * 2 * var(--sch-u))); font-weight: 700; fill: var(--text-primary); text-anchor: middle; }
 .cof-mode { font-size: max(12px, calc(var(--chart-font) * var(--sch-u))); letter-spacing: 0.1em; text-transform: uppercase; fill: var(--text-secondary); text-anchor: middle; font-weight: 600; }

@@ -22,7 +22,7 @@
     tonic: 0, mode: 'major', prog: toInsts(PRESETS[0].prog).map(withUid),
     selected: null, selectedRest: null, current: -1, currentRest: null, pulse: -1, playing: false, preview: null,
     tempo: 92, meter: '4/4', pattern: 'sustain', volume: 80, voicing: 'smooth', loop: true, tab: 'library',
-    bassLevel: 100, bassOctave: false, circleClick: 'key',
+    bassLevel: 100, bassOctave: false, circleClick: 'key', circlePath: true,
   };
   let D = {}; // derived: key, chords, voicings, spans, song
   const meter = () => meterById(state.meter);
@@ -46,7 +46,7 @@
 
   // ---------- Persistence (this page genuinely needs to remember the progression) ----------
   const STORE = 'chord-progression-lab-settings', OLD_STORE = 'progression-lab-v1';
-  const SAVED = ['tonic', 'mode', 'tempo', 'meter', 'pattern', 'volume', 'voicing', 'loop', 'tab', 'bassLevel', 'bassOctave', 'circleClick'];
+  const SAVED = ['tonic', 'mode', 'tempo', 'meter', 'pattern', 'volume', 'voicing', 'loop', 'tab', 'bassLevel', 'bassOctave', 'circleClick', 'circlePath'];
   function save() {
     try {
       const s = {};
@@ -73,6 +73,7 @@
       state.bassLevel = num(s.bassLevel, 0, 200, 100);
       state.bassOctave = !!s.bassOctave;
       state.circleClick = s.circleClick === 'play' ? 'play' : 'key';
+      state.circlePath = s.circlePath !== false;
       if (Array.isArray(s.prog)) {
         state.prog = toInsts(s.prog).filter(i => Theory.BY_ID[state.mode][i.id]).slice(0, 16)
           .map(i => withUid({ ...i, len: Number.isFinite(i.len) && i.len > 0 ? Math.min(MAX_BARS, i.len) : 1,
@@ -149,7 +150,11 @@
   // Redraw the ones whose marks are sized in script when their scale changes, and name each scroll
   // box as a region only while it scrolls. Runs after every redraw, on resize and on the
   // presentation toggle (a hidden page runs no observer callbacks, so it is also called directly).
+  let laneWidth = 0;
   function fitAll() {
+    // The lane wraps by whole bars, so a width change can change how many bars fit on a row.
+    const w = $('#lane').clientWidth;
+    if (w !== laneWidth) { laneWidth = w; const t = shown(); layoutTimeline(t.beats, t.rests); }
     if (Views.fitSvg($('#circle'))) renderCircle();
     if (Views.fitSvg($('#tension'))) renderTension();
     $$('.visual-scroll').forEach(box => Views.fitScroll(box, box.dataset.scrollLabel));
@@ -230,8 +235,11 @@
     const restOf = i < 0 ? state.prog[-1 - i] : null;
     state.current = i < 0 ? -1 : i;
     state.currentRest = restOf ? restOf.uid : null;
-    $$('.slot[data-uid]').forEach((el, k) => el.classList.toggle('playing', k === state.current));
+    const curUid = state.current >= 0 && state.prog[state.current] ? state.prog[state.current].uid : null;
+    $$('.slot[data-uid]').forEach(el => el.classList.toggle('playing', +el.dataset.uid === curUid));
+    $$('.slot[data-cont-of]').forEach(el => el.classList.toggle('playing', +el.dataset.contOf === curUid));
     $$('.slot[data-rest-for]').forEach(el => el.classList.toggle('playing', +el.dataset.restFor === state.currentRest));
+    $$('.slot[data-cont-rest]').forEach(el => el.classList.toggle('playing', +el.dataset.contRest === state.currentRest));
     renderViews();
   }
 
@@ -273,82 +281,136 @@
   }
 
   // ---------- Timeline ----------
+  // Short forms of a chord's function or tag, shown on chords too narrow for the full word, so the
+  // function is always written on the chord and never shown by colour alone.
+  const SHORT = { Tonic: 'Ton', Predominant: 'Pre', Dominant: 'Dom', borrowed: 'Bor', 'harmonic minor': 'Harm', 'Dorian IV': 'Dor', Picardy: 'Pic', Neapolitan: 'Neap' };
+  const shortTag = tag => SHORT[tag] || tag.replace(/^V of /, 'V/');
+
   function renderTimeline() {
     const full = state.prog.length >= 16;
     const items = D.chords.map((c, i) => {
-      const inst = state.prog[i], sel = inst.uid === state.selected;
+      const inst = state.prog[i], uid = inst.uid, sel = uid === state.selected;
       const tag = c.def.tag || FUNC[c.func].name, sp = D.spans[i];
       // A rest before the chord: silence on playback, and a place a chord can be dropped or picked into.
-      const restSel = state.selectedRest === inst.uid;
-      const rest = sp.restBeats ? `<li class="slot rest${restSel ? ' sel' : ''}${state.playing && state.currentRest === inst.uid ? ' playing' : ''}" data-rest-for="${inst.uid}">
-        <button type="button" class="rest-main" data-focus="rest-${inst.uid}" aria-pressed="${restSel}">
+      const restSel = state.selectedRest === uid;
+      const rest = sp.restBeats ? `<li class="lane-item"><div class="slot rest${restSel ? ' sel' : ''}${state.playing && state.currentRest === uid ? ' playing' : ''}" data-rest-for="${uid}">
+        <button type="button" class="rest-main" data-focus="rest-${uid}" aria-pressed="${restSel}">
           <span class="rest-name">Rest</span>
           <span class="slot-len">${plural(sp.restBeats, 'beat')}</span>
           <span class="rest-hint">${full ? '16 chords is the limit' : 'Drop or pick a chord here'}</span>
           <span class="visually-hidden">, before chord ${i + 1}</span>
         </button>
-        <button type="button" class="slot-x" data-rest-del="${inst.uid}" aria-label="Remove the rest before chord ${i + 1}" title="Remove this rest; the chords after it move earlier">×</button>
-      </li>` : '';
-      return `${rest}<li class="slot fn-${c.color}${sel ? ' sel' : ''}${state.playing && i === state.current ? ' playing' : ''}" data-uid="${inst.uid}" draggable="true">
-        <button type="button" class="slot-main" data-focus="slot-${inst.uid}" aria-pressed="${sel}">
+        <button type="button" class="slot-x" data-rest-del="${uid}" aria-label="Remove the rest before chord ${i + 1}" title="Remove this rest; the chords after it move earlier">×</button>
+      </div></li>` : '';
+      return `${rest}<li class="lane-item"><div class="slot fn-${c.color}${sel ? ' sel' : ''}${state.playing && i === state.current ? ' playing' : ''}" data-uid="${uid}" draggable="true">
+        <button type="button" class="slot-main" data-focus="slot-${uid}" aria-pressed="${sel}">
           <span class="slot-bar"><span class="visually-hidden">Chord </span>${i + 1}</span>
           <span class="slot-rn">${c.html}</span>
           <span class="slot-name">${esc(c.name)}</span>
-          <span class="slot-len">${plural(D.spans[i].beats, 'beat')}</span>
-          <span class="slot-tag">${esc(tag)}</span>
-          <span class="slot-t">Tension ${c.tension}</span>
+          <span class="slot-len visually-hidden">${plural(sp.beats, 'beat')}</span>
+          <span class="slot-tag"><span class="tag-full">${esc(tag)}</span><span class="tag-short" aria-hidden="true">${esc(shortTag(tag))}</span></span>
+          <span class="visually-hidden">, tension ${c.tension}</span>
           <span class="slot-meter" aria-hidden="true"><span style="width:${c.tension}%"></span></span>
         </button>
-        <button type="button" class="slot-x" data-del="${inst.uid}" aria-label="Remove chord ${i + 1}" title="Remove chord ${i + 1}">×</button>
-        <span class="slot-grip left" aria-hidden="true" title="Drag to move where this chord starts; nothing else moves"></span>
-        <span class="slot-grip" aria-hidden="true" title="Drag to change how long this chord plays; the chords after it move"></span>
-      </li>`;
+        <button type="button" class="slot-x" data-del="${uid}" aria-label="Remove chord ${i + 1}" title="Remove chord ${i + 1}">×</button>
+        <span class="slot-grip left" data-grip-for="${uid}" aria-hidden="true" title="Drag to move where this chord starts; nothing else moves"></span>
+        <span class="slot-grip right" data-grip-for="${uid}" aria-hidden="true" title="Drag to change how long this chord plays; the chords after it move"></span>
+      </div></li>`;
     }).join('');
     const addLabel = state.prog.length ? (full ? '16 chords is the limit' : 'Drop a chord here') : 'Add chords from below';
-    $('#timeline').innerHTML = items + `<li class="slot add" data-add="1"><span aria-hidden="true">+</span>${addLabel}</li>`;
+    $('#timeline').innerHTML = items + `<li class="lane-item"><div class="slot add" data-add="1"><span aria-hidden="true">+</span>${addLabel}</div></li>`;
     const t = shown();
     layoutTimeline(t.beats, t.rests);
   }
 
-  // Place the chords and rests on the time lane and draw the ruler. Called with trial lengths while
-  // dragging, so it only moves existing elements and never rebuilds them. (A rest that a drag is
-  // just opening has no block yet; it shows as empty lane until the drag ends.)
+  // Place the chords and rests on the time lane and draw its ruler. The lane wraps onto rows of whole
+  // bars; anything that runs past a row's end continues in a box at the start of the next row (the
+  // chord's right-edge grip moves to its last piece). Called with trial lengths while dragging, so it
+  // never rebuilds the chords themselves. (A rest that a drag is just opening has no block yet; it
+  // shows as empty lane until the drag ends.)
   const rootPx = () => parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-  const beatPx = () => 2.75 * rootPx(); // rem-based, so presentation mode widens the lane too
+  const beatPx = () => 2.75 * rootPx(); // rem-based, so presentation mode widens the chords too
   const beatX = (b, px) => beatPulse(meter(), b) * px / meter().perBeat;
+  const ROW_REM = { ruler: 1.7, box: 8.5, gap: 0.9 };
+  let laneGeom = null;
   function layoutTimeline(beatsList, restsList) {
-    const px = beatPx(), rem = rootPx(), n = beatsPerBar(), gap = 4;
-    const place = (el, from, to) => {
-      const x0 = beatX(from, px), w = beatX(to, px) - x0 - gap;
-      el.hidden = to <= from;
-      el.style.left = `${x0}px`;
-      el.style.width = `${Math.max(0, w)}px`;
-      el.classList.toggle('narrow', w < 6.2 * rem);
-      el.classList.toggle('tiny', w < 3.8 * rem);
-      return w;
+    const px = beatPx(), rem = rootPx(), n = beatsPerBar(), gap = 4, lane = $('#lane');
+    const barW = beatX(n, px), bpr = Math.max(1, Math.floor((lane.clientWidth + 0.5) / barW));
+    const rowBeats = bpr * n, rowW = bpr * barW, pitch = (ROW_REM.ruler + ROW_REM.box + ROW_REM.gap) * rem;
+    const top = r => r * pitch + ROW_REM.ruler * rem;
+    const xOf = (b, r) => beatX(b, px) - r * rowW;
+    laneGeom = { px, rowBeats, rowW, pitch };
+    const pieces = (from, to) => {
+      const out = [];
+      for (let a = from; a < to;) {
+        const r = Math.floor(a / rowBeats), e = Math.min(to, (r + 1) * rowBeats);
+        out.push({ r, x0: xOf(a, r), x1: xOf(e, r) });
+        a = e;
+      }
+      return out;
+    };
+    const draw = (main, from, to, contAttr) => {
+      const key = main.dataset.uid || main.dataset.restFor;
+      const grip = $(`#timeline .slot-grip.right[data-grip-for="${key}"]`);
+      if (grip && grip.parentElement !== main) main.appendChild(grip);
+      $$(`#timeline [${contAttr}="${key}"]`).forEach(el => el.remove());
+      const ps = pieces(from, to);
+      main.hidden = !ps.length;
+      ps.forEach((p, k) => {
+        let el = main;
+        if (k > 0) {
+          el = document.createElement('div');
+          el.className = `${main.className.replace(/\b(narrow|tiny|split-end|split-start|drop)\b/g, ' ')} cont`;
+          el.setAttribute(contAttr, key);
+          el.setAttribute('aria-hidden', 'true');
+          main.parentElement.appendChild(el);
+        }
+        const last = k === ps.length - 1;
+        el.style.left = `${p.x0}px`;
+        el.style.top = `${top(p.r)}px`;
+        el.style.width = `${Math.max(0, p.x1 - p.x0 - (last ? gap : 0))}px`;
+        el.classList.toggle('split-end', !last);
+        el.classList.toggle('split-start', k > 0);
+      });
+      if (!ps.length) return;
+      const w = ps[0].x1 - ps[0].x0 - (ps.length === 1 ? gap : 0);
+      main.classList.toggle('narrow', w < 6.2 * rem);
+      main.classList.toggle('tiny', w < 3.8 * rem);
+      if (grip && ps.length > 1) main.parentElement.lastElementChild.appendChild(grip);
     };
     let b = 0;
     $$('#timeline .slot[data-uid]').forEach((el, i) => {
-      const uid = el.dataset.uid, restEl = $(`#timeline .slot[data-rest-for="${uid}"]`);
-      if (restEl) { place(restEl, b, b + restsList[i]); setText(restEl.querySelector('.slot-len'), plural(restsList[i], 'beat')); }
+      const restEl = $(`#timeline .slot[data-rest-for="${el.dataset.uid}"]`);
+      if (restEl) { draw(restEl, b, b + restsList[i], 'data-cont-rest'); setText(restEl.querySelector('.slot-len'), plural(restsList[i], 'beat')); }
       b += restsList[i];
-      place(el, b, b + beatsList[i]);
+      draw(el, b, b + beatsList[i], 'data-cont-of');
       setText(el.querySelector('.slot-len'), plural(beatsList[i], 'beat'));
       b += beatsList[i];
     });
-    const end = beatX(b, px);
-    const add = $('#timeline .slot.add');
-    add.style.left = `${end}px`;
-    const bars = Math.max(1, Math.ceil(b / n));
+    // The box for adding at the end: after the last chord, or at the start of the next row.
+    const add = $('#timeline .slot.add'), addW = 7 * rem;
+    let ar = Math.floor(b / rowBeats), ax = xOf(b, ar);
+    if (ax > 0 && ax + addW > rowW + 1) { ar += 1; ax = 0; }
+    add.style.left = `${ax}px`;
+    add.style.top = `${top(ar)}px`;
+    const rows = ar + 1, bars = Math.ceil(b / n);
     let ruler = '';
-    for (let k = 0; k < bars * n; k++) {
-      ruler += k % n === 0
-        ? `<span class="bar-mark" style="left:${beatX(k, px)}px">${k / n + 1}</span>`
-        : `<span class="beat-mark" style="left:${beatX(k, px)}px"></span>`;
+    for (let r = 0; r < rows; r++) {
+      const first = r * bpr, last = Math.min(bars, (r + 1) * bpr);
+      if (first >= last) continue;
+      ruler += `<span class="ruler-line" style="top:${top(r) - 8}px;width:${xOf(last * n, r)}px"></span>`;
+      for (let bar = first; bar < last; bar++) {
+        for (let j = 0; j < n; j++) {
+          const k = bar * n + j;
+          ruler += j === 0
+            ? `<span class="bar-mark" style="left:${xOf(k, r)}px;top:${r * pitch}px">${bar + 1}</span>`
+            : `<span class="beat-mark" style="left:${xOf(k, r)}px;top:${top(r) - 8 - 0.45 * rem}px"></span>`;
+        }
+      }
+      ruler += `<span class="bar-mark" style="left:${xOf(last * n, r)}px;top:${r * pitch}px"></span>`;
     }
-    ruler += `<span class="bar-mark" style="left:${beatX(bars * n, px)}px"></span>`;
     $('#ruler').innerHTML = ruler;
-    $('#lane').style.width = `${Math.max(end + 7.5 * rem, beatX(bars * n, px) + 8)}px`;
+    lane.style.height = `${rows * pitch - ROW_REM.gap * rem}px`;
     const rest = b % n;
     setText($('#count'), `${plural(state.prog.length, 'chord')}, ${rest ? plural(b, 'beat') : plural(b / n, 'bar')}`);
     setText($('#laneNote'), b && rest
@@ -448,7 +510,7 @@
       const c = Theory.resolve({ id: d.id }, D.key);
       return `<button type="button" class="pal-chord fn-${c.color}" data-id="${d.id}" data-focus="pal-${d.id}" draggable="true">
         <span class="pal-rn">${c.html}</span><span class="pal-name">${esc(c.name)}</span>
-        ${d.tag ? `<span class="pal-tag">${esc(d.tag)}</span>` : ''}${likely.includes(d.id) ? '<span class="pal-next">often next</span>' : ''}</button>`;
+        <span class="pal-tag">${esc(d.tag || FUNC[d.func].name)}</span>${likely.includes(d.id) ? '<span class="pal-next">often next</span>' : ''}</button>`;
     };
     const defs = Theory.DEFS[state.mode];
     $('#palDiatonic').innerHTML = defs.filter(d => d.src === 'diatonic').map(chip).join('');
@@ -620,7 +682,9 @@
         && Theory.quality(x.third, x.fifth) === q);
       return d ? Theory.resolve({ id: d.id }, key).text : '';
     };
-    Views.circle($('#circle'), { key, chords: D.chords, current: state.playing ? state.current : -1, numerals, onPick: pickCircle });
+    Views.circle($('#circle'), { key, chords: D.chords, current: state.playing ? state.current : -1, numerals, onPick: pickCircle, showPath: state.circlePath });
+    $('#cofShow').checked = state.circlePath;
+    $$('[data-cof-path]').forEach(li => { li.hidden = !state.circlePath; });
     pressed('[data-cof]', b => b.dataset.cof === state.circleClick);
     const clickHelp = state.circleClick === 'key'
       ? 'Click any wedge to hear its chord and move the key there.'
@@ -791,6 +855,7 @@
     $('#bassLevel').addEventListener('change', previewBass);
     $('#bassOct').addEventListener('change', e => { state.bassOctave = e.target.checked; applyBass(); save(); previewBass(); });
     $$('[data-cof]').forEach(b => b.addEventListener('click', () => { state.circleClick = b.dataset.cof; save(); renderCircle(); }));
+    $('#cofShow').addEventListener('change', e => { state.circlePath = e.target.checked; save(); renderCircle(); });
     $('#suggest').addEventListener('click', suggest);
     $('#clear').addEventListener('click', () => { if (state.playing) stop(); state.prog = []; state.selected = null; state.selectedRest = null; update(); });
 
@@ -800,10 +865,16 @@
       if (del) { removeChord(+del.dataset.del); return; }
       const restDel = e.target.closest('[data-rest-del]');
       if (restDel) { removeRest(+restDel.dataset.restDel); return; }
+      if (e.target.closest('.slot-grip')) return; // a drag ends by selecting its chord
       const rest = e.target.closest('.rest-main');
       if (rest) { selectRest(+rest.closest('.slot').dataset.restFor); return; }
       const slot = e.target.closest('.slot-main');
-      if (slot) selectChord(+slot.closest('.slot').dataset.uid);
+      if (slot) { selectChord(+slot.closest('.slot').dataset.uid); return; }
+      // The continuation of a chord or rest on the next row selects it too (pointer only; the
+      // chord's own button is the keyboard route).
+      const cont = e.target.closest('[data-cont-of]'), contRest = e.target.closest('[data-cont-rest]');
+      if (cont) selectChord(+cont.dataset.contOf);
+      else if (contRest) selectRest(+contRest.dataset.contRest);
     });
     // Delete and Backspace act only on the focused chord or rest (a component shortcut, not a page-wide one).
     tl.addEventListener('keydown', e => {
@@ -821,19 +892,28 @@
     tl.addEventListener('pointerdown', e => {
       const grip = e.target.closest('.slot-grip');
       if (!grip || e.button > 0) return;
-      const slot = grip.closest('.slot'), uid = +slot.dataset.uid, i = indexOf(uid);
+      const uid = +grip.dataset.gripFor, slot = $(`#timeline .slot[data-uid="${uid}"]`), i = indexOf(uid);
       const fromLeft = grip.classList.contains('left');
-      if (i < 0) return;
+      if (i < 0 || !slot) return;
       e.preventDefault();
       const t0 = shown(), trial = t0.beats.slice(), rests = t0.rests.slice(), sp = D.spans[i];
       const startBeat = sp.startBeat, end = sp.startBeat + sp.beats;
-      const px = beatPx(), max = MAX_BARS * beatsPerBar();
-      const laneLeft = () => $('#lane').getBoundingClientRect().left;
-      // The beat (between lo and hi) whose position is nearest x; beats can be uneven, as in 7/8.
-      const nearestBeat = (lo, hi, x) => {
+      const max = MAX_BARS * beatsPerBar();
+      // Where the pointer is on the wrapped lane: which row, and how far along it.
+      const at = ev => {
+        const box = $('#lane').getBoundingClientRect();
+        return { x: ev.clientX - box.left, row: Math.max(0, Math.floor((ev.clientY - box.top) / laneGeom.pitch)) };
+      };
+      // The beat (between lo and hi) nearest the pointer. A beat on a row boundary can be reached at
+      // the end of one row or the start of the next; beats can be uneven, as in 7/8.
+      const nearestBeat = (lo, hi, p) => {
+        const g = laneGeom;
+        const cost = (r, x) => Math.abs(r - p.row) * 1e5 + Math.abs(x - p.x);
         let best = lo, bestD = Infinity;
         for (let k = lo; k <= hi; k++) {
-          const d = Math.abs(beatX(k, px) - x);
+          const r = Math.floor(k / g.rowBeats);
+          let d = cost(r, beatX(k, g.px) - r * g.rowW);
+          if (k > 0 && k % g.rowBeats === 0) d = Math.min(d, cost(r - 1, g.rowW));
           if (d < bestD) { bestD = d; best = k; }
         }
         return best;
@@ -843,12 +923,12 @@
       grip.classList.add('active');
       try { grip.setPointerCapture(e.pointerId); } catch (err) { /* capture refused: the window listeners below still see the drag */ }
       const move = ev => {
-        const x = ev.clientX - laneLeft();
+        const p = at(ev);
         if (fromLeft) {
-          const { lo, hi } = startBounds(i), b = nearestBeat(lo, hi, x);
+          const { lo, hi } = startBounds(i), b = nearestBeat(lo, hi, p);
           if (end - b !== trial[i]) { trial[i] = end - b; rests[i] = b - sp.restStart; layoutTimeline(trial, rests); }
         } else {
-          const k = nearestBeat(startBeat + 1, startBeat + max, x) - startBeat;
+          const k = nearestBeat(startBeat + 1, startBeat + max, p) - startBeat;
           if (k !== trial[i]) { trial[i] = k; layoutTimeline(trial, rests); }
         }
       };
@@ -886,15 +966,21 @@
       t.classList.add('drop');
     });
     tl.addEventListener('dragleave', e => { const t = e.target.closest('.slot'); if (t && !t.contains(e.relatedTarget)) t.classList.remove('drop'); });
+    // A continuation box on the next row stands for the chord or rest it continues.
+    const mainOf = el => {
+      if (el && el.dataset.contOf) return $(`#timeline .slot[data-uid="${el.dataset.contOf}"]`);
+      if (el && el.dataset.contRest) return $(`#timeline .slot[data-rest-for="${el.dataset.contRest}"]`);
+      return el;
+    };
     tl.addEventListener('drop', e => {
-      const t = e.target.closest('.slot');
+      const t = mainOf(e.target.closest('.slot'));
       if (!t) return;
       e.preventDefault();
       let data;
       try { data = JSON.parse(e.dataTransfer.getData('text/plain')); } catch (err) { return; }
       // Onto a rest: a palette chord or a chord from the timeline fills it exactly.
+      tl.querySelectorAll('.drop').forEach(x => x.classList.remove('drop'));
       if (t.dataset.restFor) {
-        t.classList.remove('drop');
         if (data.id) fillRest(+t.dataset.restFor, { id: data.id, ext: 'triad', inv: 0 });
         else if (data.uid) moveIntoRest(data.uid, +t.dataset.restFor);
         return;
@@ -1004,7 +1090,7 @@
   Chrome.init({ refresh: () => { renderViews(); const t = shown(); layoutTimeline(t.beats, t.rests); fitAll(); } });
   if (window.ResizeObserver) {
     const ro = new ResizeObserver(queueFit);
-    $$('.visual-scroll, #circle, #tension').forEach(el => ro.observe(el));
+    $$('.visual-scroll, #circle, #tension, #lane').forEach(el => ro.observe(el));
   }
   // Backstops: observer callbacks are held while a tab is hidden, so also re-fit on window resize
   // and when the tab comes back into view.

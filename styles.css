@@ -104,15 +104,15 @@
 }
 
 /* ---------- Series keys ---------- */
-/* Each function has a colour and a band pattern, so it can be told apart without colour: the
-   colour-vision simulation put tonic and chromatic at ΔE 1.9 under protanopia (dark theme), and all
-   four within ΔE 3 in greyscale. Solid = tonic, dashed = predominant, dotted = dominant,
-   double = chromatic; drawn marks use shapes to match (circle, square, diamond, triangle). */
-.fn-tonic { --fn: var(--fn-tonic); --band: linear-gradient(var(--fn), var(--fn)); }
-.fn-sub { --fn: var(--fn-sub); --band: repeating-linear-gradient(90deg, var(--fn) 0 9px, transparent 9px 13px); }
-.fn-dom { --fn: var(--fn-dom); --band: repeating-linear-gradient(90deg, var(--fn) 0 3px, transparent 3px 6px); }
-.fn-chrom { --fn: var(--fn-chrom); --band: linear-gradient(var(--fn) 0 38%, transparent 38% 62%, var(--fn) 62% 100%); }
-.akey { display: inline-block; width: 18px; height: 10px; border-radius: 2px; background: var(--band, var(--fn)); flex: none; }
+/* Function colours are never the only cue: the colour-vision simulation put tonic and chromatic at
+   ΔE 1.9 under protanopia (dark theme) and all four within ΔE 3 in greyscale. So every chord and
+   palette button also names its function in words, and drawn marks have shapes (circle tonic,
+   square predominant, diamond dominant, triangle chromatic). */
+.fn-tonic { --fn: var(--fn-tonic); }
+.fn-sub { --fn: var(--fn-sub); }
+.fn-dom { --fn: var(--fn-dom); }
+.fn-chrom { --fn: var(--fn-chrom); }
+.akey { display: inline-block; width: 14px; height: 10px; border-radius: 3px; background: var(--fn); flex: none; }
 
 /* ---------- Base ---------- */
 *, *::before, *::after { box-sizing: border-box; }
@@ -219,8 +219,7 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 
 /* ---------- Legends (style guide 7.10: a grid, one entry per cell) ---------- */
 .lg-key { display: inline-block; flex: none; width: 26px; height: 3px; border-radius: 2px; background: var(--key, var(--fn)); vertical-align: middle; }
-.lg-key.thick { height: 6px; }
-.lg-key.thick[class*="fn-"] { background: var(--band); border-radius: 0; }
+.lg-key.thick { height: 5px; }
 .lg-key.dashed { height: 0; border-radius: 0; background: none; border-top: 3px dashed var(--key); }
 .lg-wash { display: inline-block; flex: none; width: 22px; height: 14px; border-radius: 2px; background: color-mix(in srgb, var(--key) 22%, transparent); border: 1px solid var(--key); }
 .lg-dot { display: inline-block; flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--key); }
@@ -243,7 +242,7 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 .lg > :first-child { justify-self: center; }
 /* Centre each swatch on the first line: half the line-height (1.35 / 2 = 0.675em) minus half the swatch. */
 .lg > .lg-key { margin-top: calc(0.675em - 1.5px); }
-.lg > .lg-key.thick { margin-top: calc(0.675em - 3px); }
+.lg > .lg-key.thick { margin-top: calc(0.675em - 2.5px); }
 .lg > .lg-wash { margin-top: calc(0.675em - 7px); }
 .lg > .lg-dot, .lg > .lg-sq { margin-top: calc(0.675em - 6px); }
 .lg > .lg-dot.hollow.now { margin-top: calc(0.675em - 7px); }
@@ -261,33 +260,44 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 .rn .fig span:only-child { transform: translateY(-0.1em); }
 .rn-target { font-size: 0.65em; margin-left: 0.04em; }
 
-/* ---------- Timeline lane: a time axis, so each chord's width follows its length ---------- */
-.lane-wrap { padding-bottom: 6px; }
-.lane { position: relative; }
-.ruler { position: relative; height: 1.7rem; border-bottom: 1px solid var(--text-muted); margin-bottom: 8px; }
-.bar-mark { position: absolute; top: 0; bottom: -1px; border-left: 2px solid var(--text-muted); padding-left: 4px;
+/* ---------- Timeline lane: a time axis that wraps onto rows of whole bars, like lines of music ---------- */
+/* Positions and the lane's height are set by script (layoutTimeline) from the beat width. */
+.lane { position: relative; width: 100%; }
+.ruler { position: absolute; inset: 0; pointer-events: none; }
+.ruler-line { position: absolute; left: 0; height: 0; border-top: 1px solid var(--text-muted); }
+.bar-mark { position: absolute; height: calc(1.7rem - 8px); border-left: 2px solid var(--text-muted); padding-left: 4px;
   font-family: var(--font-mono); font-size: 0.75rem; line-height: 1.2; color: var(--text-secondary); white-space: nowrap; }
-.beat-mark { position: absolute; bottom: -1px; height: 0.45rem; border-left: 1px solid var(--text-muted); }
-.timeline { list-style: none; margin: 0; padding: 0; position: relative; height: 8.5rem; }
-.slot { position: absolute; top: 0; bottom: 0; border-radius: 10px; background: color-mix(in srgb, var(--fn) 9%, var(--surface));
+.beat-mark { position: absolute; height: 0.45rem; border-left: 1px solid var(--text-muted); }
+.timeline { list-style: none; margin: 0; padding: 0; }
+.slot { position: absolute; height: 8.5rem; border-radius: 10px; background: color-mix(in srgb, var(--fn) 9%, var(--surface));
   border: 1px solid var(--border); }
+/* A chord or rest that runs past a row's end: square, dashed edges where it continues. */
+.slot.split-end { border-top-right-radius: 0; border-bottom-right-radius: 0; border-right: 2px dashed var(--border-strong); }
+.slot.split-start { border-top-left-radius: 0; border-bottom-left-radius: 0; border-left: 2px dashed var(--border-strong); }
+.slot.split-end::before { border-top-right-radius: 0; }
+.slot.split-start::before { border-top-left-radius: 0; }
+.slot.cont { cursor: pointer; }
 .slot-grip { position: absolute; top: 0; right: 0; bottom: 0; width: 14px; cursor: ew-resize; touch-action: none;
   display: grid; place-items: center; border-radius: 0 10px 10px 0; }
 .slot-grip::before { content: ''; width: 3px; height: 2.4rem; border-left: 2px solid var(--text-muted); border-right: 2px solid var(--text-muted); }
 .slot-grip.left { left: 0; right: auto; border-radius: 10px 0 0 10px; }
 .slot-grip:hover::before, .slot.resizing .slot-grip.active::before { border-color: var(--text-primary); }
-.slot.tiny .slot-grip { width: 10px; }
+.slot.tiny .slot-grip { width: 8px; }
+.slot.tiny .slot-tag { letter-spacing: 0; }
 .slot.resizing { outline: 2px dashed var(--accent); outline-offset: 2px; z-index: 3; }
 .slot-len { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-/* Short chords keep their details for screen readers; the Chord panel and table show them on screen. */
-.slot.narrow .slot-tag, .slot.narrow .slot-t, .slot.tiny .slot-name, .slot.tiny .slot-len, .slot.tiny .slot-bar {
+/* Short chords keep their details for screen readers; the Chord panel and table show them on screen.
+   The function stays visible on every chord, as a short form (Ton, Pre, Dom) when space is tight. */
+.tag-short { display: none; }
+.slot.narrow .tag-short { display: inline; }
+.slot.narrow .tag-full, .slot.tiny .slot-name, .slot.tiny .slot-len, .slot.tiny .slot-bar {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .slot.tiny .slot-x { display: none; }
 /* A one-beat block is about 40 px wide: the numeral may wrap onto a second line rather than spill out. */
 .slot.tiny .slot-rn { font-size: 1rem; line-height: 1.15; }
 .slot.tiny .slot-rn .rn { white-space: normal; overflow-wrap: anywhere; }
-.slot.tiny .slot-main { padding-left: 6px; padding-right: 6px; }
-.slot::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; border-radius: 10px 10px 0 0; background: var(--band, var(--fn)); }
+.slot.tiny .slot-main { padding-left: 8px; padding-right: 8px; }
+.slot::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; border-radius: 10px 10px 0 0; background: var(--fn); }
 .slot-main { display: grid; align-content: start; gap: 3px; width: 100%; height: 100%; padding: 14px 16px 12px 16px; border: 0;
   background: transparent; text-align: left; border-radius: 10px; color: var(--text-primary); }
 .slot-bar { font-family: var(--font-mono); font-size: 0.75rem; color: var(--text-secondary); }
@@ -341,7 +351,7 @@ select { font: inherit; padding: 5px 8px; border-radius: 8px; border: 1px solid 
 .pal { display: flex; flex-wrap: wrap; gap: 8px; }
 .pal-chord { position: relative; display: grid; justify-items: start; gap: 1px; min-width: 5.2rem; padding: 12px 14px 8px 12px; text-align: left;
   border-radius: 10px; border: 1px solid var(--border); background: color-mix(in srgb, var(--fn) 8%, var(--surface)); color: var(--text-primary); overflow: hidden; }
-.pal-chord::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 6px; background: var(--band, var(--fn)); }
+.pal-chord::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 4px; background: var(--fn); }
 .pal-chord:hover { border-color: var(--text-muted); }
 .pal-rn { font-size: 1.45rem; line-height: 1.1; }
 .pal-name { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-secondary); }
